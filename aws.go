@@ -57,7 +57,7 @@ type ErrS3Output struct {
 }
 
 func (e *ErrS3Output) Error() string {
-	return "found one or more errors in " + a.api + " output"
+	return "found one or more errors in " + e.api + " output"
 }
 
 type ErrGetSecret struct {
