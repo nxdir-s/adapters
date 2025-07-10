@@ -94,8 +94,7 @@ func WithCredentialsJSON(ctx context.Context, source string) GoogleOpt {
 
 		a.config = config
 
-		authURL := a.config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-		fmt.Printf("Go to the following link in your browser then type the authorization code: \n%v\n", authURL)
+		fmt.Printf("Go to the following link in your browser then type the authorization code: \n%v\n", a.config.AuthCodeURL("state-token", oauth2.AccessTypeOffline))
 
 		var authCode string
 		if _, err := fmt.Scan(&authCode); err != nil {
@@ -148,45 +147,6 @@ func NewGoogleAdapter(opts ...GoogleOpt) (*GoogleAdapter, error) {
 	}
 
 	return adapter, nil
-}
-
-func (a *GoogleAdapter) GetToken(ctx context.Context) error {
-	if a.config == nil {
-		return &ErrNilConfig{}
-	}
-
-	authURL := a.config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
-	fmt.Printf("Go to the following link in your browser then type the authorization code: \n%v\n", authURL)
-
-	var authCode string
-	if _, err := fmt.Scan(&authCode); err != nil {
-		return &ErrAuthCode{err}
-	}
-
-	token, err := a.config.Exchange(ctx, authCode)
-	if err != nil {
-		return &ErrWebToken{err}
-	}
-
-	a.token = token
-	a.client = a.config.Client(ctx, a.token)
-
-	return nil
-}
-
-func (a *GoogleAdapter) ConnectDrive(ctx context.Context) error {
-	if a.client == nil {
-		return &ErrNilClient{}
-	}
-
-	client, err := drive.NewService(ctx, option.WithHTTPClient(a.client))
-	if err != nil {
-		return &ErrDriveClient{err}
-	}
-
-	a.drive = client
-
-	return nil
 }
 
 func (a *GoogleAdapter) UploadToDrive(ctx context.Context, file io.Reader, name string) error {
