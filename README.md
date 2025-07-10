@@ -1,3 +1,3 @@
 # adapters
 
-Contains helpful adapters for various interactions
+Contains helpful adapters for various systems
