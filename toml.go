@@ -40,12 +40,9 @@ func (a *TomlAdapter[T]) LoadConfig(filename string) error {
 		return &ErrReadCfg{filename, err}
 	}
 
-	var cfg T
-	if err := toml.Unmarshal(data, &cfg); err != nil {
+	if err := toml.Unmarshal(data, &a.Config); err != nil {
 		return &ErrUnmarshalToml{filename, err}
 	}
-
-	a.Config = cfg
 
 	return nil
 }
