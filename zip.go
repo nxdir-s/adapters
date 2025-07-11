@@ -23,11 +23,11 @@ func NewZipAdapter() *ZipAdapter {
 	return &ZipAdapter{}
 }
 
-func (a *ZipAdapter) Zip(ctx context.Context, source string, filename string, dst io.Writer) error {
+func (a *ZipAdapter) Zip(ctx context.Context, src string, filename string, dst io.Writer) error {
 	writer := zip.NewWriter(dst)
 	defer writer.Close()
 
-	return filepath.Walk(source, func(path string, info os.FileInfo, err error) error {
+	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
@@ -39,7 +39,7 @@ func (a *ZipAdapter) Zip(ctx context.Context, source string, filename string, ds
 
 		header.Method = zip.Deflate
 
-		if header.Name, err = filepath.Rel(filepath.Dir(source), path); err != nil {
+		if header.Name, err = filepath.Rel(filepath.Dir(src), path); err != nil {
 			return err
 		}
 
@@ -70,14 +70,14 @@ func (a *ZipAdapter) Zip(ctx context.Context, source string, filename string, ds
 	})
 }
 
-func (a *ZipAdapter) Unzip(ctx context.Context, source string, destination string) error {
-	reader, err := zip.OpenReader(source)
+func (a *ZipAdapter) Unzip(ctx context.Context, src string, dst string) error {
+	reader, err := zip.OpenReader(src)
 	if err != nil {
 		return err
 	}
 	defer reader.Close()
 
-	destination, err = filepath.Abs(destination)
+	destination, err := filepath.Abs(dst)
 	if err != nil {
 		return err
 	}
@@ -91,10 +91,10 @@ func (a *ZipAdapter) Unzip(ctx context.Context, source string, destination strin
 	return nil
 }
 
-func (a *ZipAdapter) unzipFile(f *zip.File, destination string) error {
-	filePath := filepath.Join(destination, f.Name)
+func (a *ZipAdapter) unzipFile(f *zip.File, dst string) error {
+	filePath := filepath.Join(dst, f.Name)
 
-	if !strings.HasPrefix(filePath, filepath.Clean(destination)+string(os.PathSeparator)) {
+	if !strings.HasPrefix(filePath, filepath.Clean(dst)+string(os.PathSeparator)) {
 		return &ErrInvalidPath{filePath}
 	}
 
@@ -110,11 +110,11 @@ func (a *ZipAdapter) unzipFile(f *zip.File, destination string) error {
 		return err
 	}
 
-	destinationFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
+	dstFile, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
 	if err != nil {
 		return err
 	}
-	defer destinationFile.Close()
+	defer dstFile.Close()
 
 	zippedFile, err := f.Open()
 	if err != nil {
@@ -122,7 +122,7 @@ func (a *ZipAdapter) unzipFile(f *zip.File, destination string) error {
 	}
 	defer zippedFile.Close()
 
-	if _, err := io.Copy(destinationFile, zippedFile); err != nil {
+	if _, err := io.Copy(dstFile, zippedFile); err != nil {
 		return err
 	}
 
