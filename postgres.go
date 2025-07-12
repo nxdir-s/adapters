@@ -232,7 +232,7 @@ func (a *PostgresAdapter[T]) Insert(ctx context.Context, row *PostgresRow) (int,
 	return id, nil
 }
 
-const InsertQuery string = `
+const ExInsertQuery string = `
     INSERT INTO table (
         data
     ) VALUES (
@@ -272,7 +272,7 @@ func (a *PostgresAdapter[T]) Delete(ctx context.Context, row *PostgresRow) error
 	return nil
 }
 
-const DeleteQuery string = `
+const ExDeleteQuery string = `
     DELETE FROM table
     WHERE id = @id
 `
@@ -308,7 +308,7 @@ func (a *PostgresAdapter[T]) Select(ctx context.Context, rows *PostgresRows[T]) 
 	return nil
 }
 
-const SelectQuery string = `
+const ExSelectQuery string = `
     SELECT *
     FROM table
     WHERE id = @id
@@ -346,7 +346,7 @@ func (a *PostgresAdapter[T]) RowExists(ctx context.Context, row *PostgresRow) (b
 	return true, nil
 }
 
-const RowExistsQuery string = `
+const ExRowExistsQuery string = `
     SELECT id
     FROM table
     WHERE id = @id
