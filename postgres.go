@@ -53,10 +53,16 @@ func (e *ErrCollectRows) Error() string {
 	return "failed to collect rows to struct: " + e.err.Error()
 }
 
-type ErrCreateUser struct{}
+type ErrNilPgxTx struct{}
 
-func (e *ErrCreateUser) Error() string {
-	return "failed to create new user"
+func (e *ErrNilPgxTx) Error() string {
+	return "error nil PgxTx"
+}
+
+type ErrNilPgxPool struct{}
+
+func (e *ErrNilPgxPool) Error() string {
+	return "error nil PgxPool"
 }
 
 type PgxPool interface {
@@ -125,6 +131,10 @@ func NewPostgresAdapter[T any](pool PgxPool, logger *slog.Logger, tracer trace.T
 
 // NewTransactionAdapter creates an adapter for executing transactions
 func (a *PostgresAdapter[T]) NewTransactionAdapter(ctx context.Context) (*PostgresAdapter[T], error) {
+	if a.conn == nil {
+		return nil, &ErrNilPgxPool{}
+	}
+
 	tx, err := a.conn.Begin(ctx)
 	if err != nil {
 		return nil, err
@@ -137,6 +147,10 @@ func (a *PostgresAdapter[T]) NewTransactionAdapter(ctx context.Context) (*Postgr
 
 // Commit commits the transaction after first checking if the context has been canceled
 func (a *PostgresAdapter[T]) Commit(ctx context.Context) error {
+	if a.tx == nil {
+		return &ErrNilPgxTx{}
+	}
+
 	select {
 	case <-ctx.Done():
 		ctx, cancel := context.WithTimeout(ctx, time.Second*10)
@@ -150,6 +164,10 @@ func (a *PostgresAdapter[T]) Commit(ctx context.Context) error {
 
 // Rollback initiates a transaction rollback
 func (a *PostgresAdapter[T]) Rollback(ctx context.Context) error {
+	if a.tx == nil {
+		return &ErrNilPgxTx{}
+	}
+
 	return a.tx.Rollback(ctx)
 }
 
@@ -160,6 +178,10 @@ func (a *PostgresAdapter[T]) ConnectionPool() PgxPool {
 
 // Insert creates a new row returns the id
 func (a *PostgresAdapter[T]) Insert(ctx context.Context, row *PostgresRow) (int, error) {
+	if a.conn == nil {
+		return 0, &ErrNilPgxPool{}
+	}
+
 	ctx, span := a.tracer.Start(ctx, "INSERT "+row.Collection,
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindClient),
@@ -191,6 +213,10 @@ const InsertQuery string = `
 
 // Delete deletes the supplied row
 func (a *PostgresAdapter[T]) Delete(ctx context.Context, row *PostgresRow) error {
+	if a.conn == nil {
+		return &ErrNilPgxPool{}
+	}
+
 	ctx, span := a.tracer.Start(ctx, "DELETE "+row.Collection,
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindClient),
@@ -222,6 +248,10 @@ const DeleteQuery string = `
 `
 
 func (a *PostgresAdapter[T]) Select(ctx context.Context, rows *PostgresRows[T]) error {
+	if a.conn == nil {
+		return &ErrNilPgxPool{}
+	}
+
 	ctx, span := a.tracer.Start(ctx, "SELECT "+rows.Collection,
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindClient),
@@ -257,6 +287,10 @@ const SelectQuery string = `
 `
 
 func (a *PostgresAdapter[T]) RowExists(ctx context.Context, row *PostgresRow) (bool, error) {
+	if a.conn == nil {
+		return false, &ErrNilPgxPool{}
+	}
+
 	ctx, span := a.tracer.Start(ctx, "SELECT "+row.Collection,
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindClient),
