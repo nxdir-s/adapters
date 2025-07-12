@@ -62,7 +62,7 @@ func (e *ErrNilPgxTx) Error() string {
 type ErrNilPgxPool struct{}
 
 func (e *ErrNilPgxPool) Error() string {
-	return "error nil PgxPool"
+	return "error nil connection pool"
 }
 
 type PgxPool interface {
@@ -132,6 +132,7 @@ func NewPostgresAdapter[T any](pool PgxPool, logger *slog.Logger, tracer trace.T
 // NewTransactionAdapter creates an adapter for executing transactions
 func (a *PostgresAdapter[T]) NewTransactionAdapter(ctx context.Context) (*PostgresAdapter[T], error) {
 	if a.conn == nil {
+		a.logger.Error("nil connection in PostgresAdapter")
 		return nil, &ErrNilPgxPool{}
 	}
 
@@ -148,6 +149,7 @@ func (a *PostgresAdapter[T]) NewTransactionAdapter(ctx context.Context) (*Postgr
 // Commit commits the transaction after first checking if the context has been canceled
 func (a *PostgresAdapter[T]) Commit(ctx context.Context) error {
 	if a.tx == nil {
+		a.logger.Error("nil PgxTx in PostgresAdapter")
 		return &ErrNilPgxTx{}
 	}
 
@@ -165,6 +167,7 @@ func (a *PostgresAdapter[T]) Commit(ctx context.Context) error {
 // Rollback initiates a transaction rollback
 func (a *PostgresAdapter[T]) Rollback(ctx context.Context) error {
 	if a.tx == nil {
+		a.logger.Error("nil PgxTx in PostgresAdapter")
 		return &ErrNilPgxTx{}
 	}
 
@@ -179,6 +182,7 @@ func (a *PostgresAdapter[T]) ConnectionPool() PgxPool {
 // Insert creates a new row returns the id
 func (a *PostgresAdapter[T]) Insert(ctx context.Context, row *PostgresRow) (int, error) {
 	if a.conn == nil {
+		a.logger.Error("nil connection in PostgresAdapter")
 		return 0, &ErrNilPgxPool{}
 	}
 
@@ -214,6 +218,7 @@ const InsertQuery string = `
 // Delete deletes the supplied row
 func (a *PostgresAdapter[T]) Delete(ctx context.Context, row *PostgresRow) error {
 	if a.conn == nil {
+		a.logger.Error("nil connection in PostgresAdapter")
 		return &ErrNilPgxPool{}
 	}
 
@@ -249,6 +254,7 @@ const DeleteQuery string = `
 
 func (a *PostgresAdapter[T]) Select(ctx context.Context, rows *PostgresRows[T]) error {
 	if a.conn == nil {
+		a.logger.Error("nil connection in PostgresAdapter")
 		return &ErrNilPgxPool{}
 	}
 
@@ -285,6 +291,7 @@ const SelectQuery string = `
 
 func (a *PostgresAdapter[T]) RowExists(ctx context.Context, row *PostgresRow) (bool, error) {
 	if a.conn == nil {
+		a.logger.Error("nil connection in PostgresAdapter")
 		return false, &ErrNilPgxPool{}
 	}
 
