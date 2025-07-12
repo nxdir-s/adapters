@@ -67,8 +67,8 @@ type PgxPool interface {
 }
 
 // NewPgxPool creates a pgxpool.Pool
-func NewPgxPool(ctx context.Context, dbUrl string) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, dbUrl)
+func NewPgxPool(ctx context.Context, connUrl string) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(ctx, connUrl)
 	if err != nil {
 		return nil, &ErrConnect{err}
 	}
