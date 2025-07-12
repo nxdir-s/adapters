@@ -25,7 +25,7 @@ func (e *ErrUnmarshalToml) Error() string {
 }
 
 type TomlAdapter[T any] struct {
-	Config T
+	Cfg T
 }
 
 // NewTomlAdapter creates a toml adapter
@@ -40,9 +40,14 @@ func (a *TomlAdapter[T]) LoadConfig(filename string) error {
 		return &ErrReadCfg{filename, err}
 	}
 
-	if err := toml.Unmarshal(data, &a.Config); err != nil {
+	if err := toml.Unmarshal(data, &a.Cfg); err != nil {
 		return &ErrUnmarshalToml{filename, err}
 	}
 
 	return nil
+}
+
+// Config returns the loaded config
+func (a *TomlAdapter[T]) Config() T {
+	return a.Cfg
 }
