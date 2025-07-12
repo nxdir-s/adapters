@@ -145,6 +145,10 @@ func (a *AWSAdapter) GetObject(ctx context.Context, bucket string, key string) (
 	)
 	defer span.End()
 
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
+
 	a.logger.Info("reading object from s3",
 		slog.String("bucket", bucket),
 		slog.String("key", key),
@@ -198,6 +202,10 @@ func (a *AWSAdapter) PutObject(ctx context.Context, data io.Reader, bucket strin
 	)
 	defer span.End()
 
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
+
 	a.logger.Info("uploading to s3",
 		slog.String("bucket", bucket),
 		slog.String("key", key),
@@ -238,6 +246,10 @@ func (a *AWSAdapter) ObjectExists(ctx context.Context, bucket string, key string
 		),
 	)
 	defer span.End()
+
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
 
 	a.logger.Info("checking if object exists in s3",
 		slog.String("bucket", bucket),
@@ -284,6 +296,10 @@ func (a *AWSAdapter) ListObjects(ctx context.Context, bucket string, prefix stri
 		),
 	)
 	defer span.End()
+
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
 
 	a.logger.Info("listing objects in s3",
 		slog.String("bucket", bucket),
@@ -355,6 +371,10 @@ func (a *AWSAdapter) DeleteObjects(ctx context.Context, bucket string, objects [
 		),
 	)
 	defer span.End()
+
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
 
 	a.logger.Info("deleting objects from s3",
 		slog.String("bucket", bucket),
@@ -468,6 +488,10 @@ func (a *AWSAdapter) GetSecretValue(ctx context.Context, secretArn string, secre
 		),
 	)
 	defer span.End()
+
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
 
 	params := &secretsmanager.GetSecretValueInput{
 		SecretId: aws.String(secretArn),
