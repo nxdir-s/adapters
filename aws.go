@@ -135,7 +135,7 @@ func (a *AWSAdapter) GetObject(ctx context.Context, bucket string, key string) (
 		return nil, &ErrNilAWSClient{"s3"}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "AWS GetObject",
+	ctx, span := a.tracer.Start(ctx, "S3 GetObject",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
@@ -192,7 +192,7 @@ func (a *AWSAdapter) PutObject(ctx context.Context, data io.Reader, bucket strin
 		return &ErrNilAWSClient{"s3"}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "AWS PutObject",
+	ctx, span := a.tracer.Start(ctx, "S3 PutObject",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
@@ -237,7 +237,7 @@ func (a *AWSAdapter) ObjectExists(ctx context.Context, bucket string, key string
 		return 0, &ErrNilAWSClient{"s3"}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "AWS ObjectExists",
+	ctx, span := a.tracer.Start(ctx, "S3 ObjectExists",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
@@ -288,7 +288,7 @@ func (a *AWSAdapter) ListObjects(ctx context.Context, bucket string, prefix stri
 		return nil, &ErrNilAWSClient{"s3"}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "AWS ListObjects",
+	ctx, span := a.tracer.Start(ctx, "S3 ListObjects",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
@@ -363,7 +363,7 @@ func (a *AWSAdapter) DeleteObjects(ctx context.Context, bucket string, objects [
 		return nil
 	}
 
-	ctx, span := a.tracer.Start(ctx, "AWS DeleteObjects",
+	ctx, span := a.tracer.Start(ctx, "S3 DeleteObjects",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
@@ -480,7 +480,7 @@ func (a *AWSAdapter) GetSecretValue(ctx context.Context, secretArn string, secre
 		return "", &ErrNilAWSClient{"secretsmanager"}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "AWS GetSecretValue",
+	ctx, span := a.tracer.Start(ctx, "SecretsManager GetSecretValue",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
