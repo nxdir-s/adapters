@@ -179,6 +179,31 @@ func (a *PostgresAdapter[T]) ConnectionPool() PgxPool {
 	return a.conn
 }
 
+// Exec executes the supplied sql statement and returns the number of rows affected
+func (a *PostgresAdapter[T]) Exec(ctx context.Context, sql string, args map[string]interface{}) (int64, error) {
+	if a.conn == nil {
+		a.logger.Error("nil connection in PostgresAdapter")
+		return 0, &ErrNilPgxPool{}
+	}
+
+	ctx, span := a.tracer.Start(ctx, "EXEC",
+		trace.WithLinks(trace.LinkFromContext(ctx)),
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("db.system.name", "postgresql"),
+			attribute.String("db.query.text", sql),
+		),
+	)
+	defer span.End()
+
+	resp, err := a.conn.Exec(ctx, sql, args)
+	if err != nil {
+		return 0, &ErrExecQuery{err}
+	}
+
+	return resp.RowsAffected(), nil
+}
+
 // Insert creates a new row returns the id
 func (a *PostgresAdapter[T]) Insert(ctx context.Context, row *PostgresRow) (int, error) {
 	if a.conn == nil {
