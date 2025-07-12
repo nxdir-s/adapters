@@ -50,24 +50,24 @@ type ErrSendKeys struct {
 }
 
 func (e *ErrSendKeys) Error() string {
-	return "error executing " + SendKeysCmd + " with cmd '" + e.cmd + "': " + e.err.Error()
+	return "error executing " + TmuxSendKeysCmd + " with cmd '" + e.cmd + "': " + e.err.Error()
 }
 
 const Alias string = "tmux"
 
 const (
-	SessionExists int = iota
-	SessionNotExists
+	TmuxSessionExists int = iota
+	TmuxSessionNotExists
 )
 
 const (
-	EnterCmd        string = "C-m"
-	HasSessionCmd   string = "has-session"
-	NewSessionCmd   string = "new-session"
-	NewWindowCmd    string = "new-window"
-	SelectWindowCmd string = "select-window"
-	AttachCmd       string = "attach-session"
-	SendKeysCmd     string = "send-keys"
+	TmuxEnterCmd        string = "C-m"
+	TmuxHasSessionCmd   string = "has-session"
+	TmuxNewSessionCmd   string = "new-session"
+	TmuxNewWindowCmd    string = "new-window"
+	TmuxSelectWindowCmd string = "select-window"
+	TmuxAttachCmd       string = "attach-session"
+	TmuxSendKeysCmd     string = "send-keys"
 )
 
 type Command interface {
@@ -87,33 +87,33 @@ func NewTmuxAdapter(adapter Command) *TmuxAdapter {
 
 // HasSession checks for an already existing tmux session
 func (a *TmuxAdapter) HasSession(ctx context.Context, session string) int {
-	cmd := exec.CommandContext(ctx, Alias, HasSessionCmd, "-t", session)
+	cmd := exec.CommandContext(ctx, Alias, TmuxHasSessionCmd, "-t", session)
 
 	fmt.Fprintf(os.Stdout, "checking for existing session '%s'\n", session)
 
 	output, err := a.cmd.Exec(ctx, cmd)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "%s failed: %s\n", HasSessionCmd, err.Error())
+		fmt.Fprintf(os.Stdout, "%s failed: %s\n", TmuxHasSessionCmd, err.Error())
 
-		return SessionNotExists
+		return TmuxSessionNotExists
 	}
 
 	if _, err := io.Copy(os.Stdout, output); err != nil {
-		return SessionNotExists
+		return TmuxSessionNotExists
 	}
 
-	return SessionExists
+	return TmuxSessionExists
 }
 
 // NewSession creates a new tmux session
 func (a *TmuxAdapter) NewSession(ctx context.Context, name string) error {
-	cmd := exec.CommandContext(ctx, Alias, NewSessionCmd, "-d", "-s", name, "-n", name)
+	cmd := exec.CommandContext(ctx, Alias, TmuxNewSessionCmd, "-d", "-s", name, "-n", name)
 
 	fmt.Fprintf(os.Stdout, "creating new session named '%s'\n", name)
 
 	output, err := a.cmd.Exec(ctx, cmd)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "%s failed: %s\n", NewSessionCmd, err.Error())
+		fmt.Fprintf(os.Stdout, "%s failed: %s\n", TmuxNewSessionCmd, err.Error())
 
 		return &ErrNewSession{name, err}
 	}
@@ -127,12 +127,12 @@ func (a *TmuxAdapter) NewSession(ctx context.Context, name string) error {
 
 // AttachSession attempts attaching to a tmux session
 func (a *TmuxAdapter) AttachSession(ctx context.Context, session string) error {
-	cmd := exec.CommandContext(ctx, Alias, AttachCmd, "-t", session)
+	cmd := exec.CommandContext(ctx, Alias, TmuxAttachCmd, "-t", session)
 	cmd.Stdin = os.Stdin
 
 	output, err := a.cmd.Exec(ctx, cmd)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "%s failed: %s\n", AttachCmd, err.Error())
+		fmt.Fprintf(os.Stdout, "%s failed: %s\n", TmuxAttachCmd, err.Error())
 
 		return &ErrAttachSession{session, err}
 	}
@@ -146,11 +146,11 @@ func (a *TmuxAdapter) AttachSession(ctx context.Context, session string) error {
 
 // NewWindow creates a new tmux window
 func (a *TmuxAdapter) NewWindow(ctx context.Context, session string, name string) error {
-	cmd := exec.CommandContext(ctx, Alias, NewWindowCmd, "-t", session, "-n", name)
+	cmd := exec.CommandContext(ctx, Alias, TmuxNewWindowCmd, "-t", session, "-n", name)
 
 	output, err := a.cmd.Exec(ctx, cmd)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "%s failed: %s\n", NewWindowCmd, err.Error())
+		fmt.Fprintf(os.Stdout, "%s failed: %s\n", TmuxNewWindowCmd, err.Error())
 
 		return &ErrNewWindow{name, err}
 	}
@@ -164,11 +164,11 @@ func (a *TmuxAdapter) NewWindow(ctx context.Context, session string, name string
 
 // SelectWindow selects a tmux window
 func (a *TmuxAdapter) SelectWindow(ctx context.Context, session string, window string) error {
-	cmd := exec.CommandContext(ctx, Alias, SelectWindowCmd, "-t", session+":"+window)
+	cmd := exec.CommandContext(ctx, Alias, TmuxSelectWindowCmd, "-t", session+":"+window)
 
 	output, err := a.cmd.Exec(ctx, cmd)
 	if err != nil {
-		fmt.Fprintf(os.Stdout, "%s failed: %s\n", SelectWindowCmd, err.Error())
+		fmt.Fprintf(os.Stdout, "%s failed: %s\n", TmuxSelectWindowCmd, err.Error())
 
 		return &ErrSelectWindow{window, err}
 	}

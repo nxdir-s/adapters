@@ -53,13 +53,8 @@ func (a *CmdMock) Exec(ctx context.Context, cmd *exec.Cmd) (io.Reader, error) {
 }
 
 const (
-	TmuxSessionName string = "TmuxUnitTests"
-	TmuxWindowName  string = "TmuxUnitTests"
-
-	TmuxSessionExists    string = "HasSession should return 0 if a tmux session exists"
-	TmuxSessionNotExists string = "HasSession should return 1 if a tmux session does not exists"
-
-	TmuxNewSession string = "NewSession should create a new tmux session"
+	TestTmuxSession string = "TmuxUnitTests"
+	TestTmuxWindow  string = "TmuxUnitTests"
 )
 
 func TestHasSession(t *testing.T) {
@@ -69,13 +64,13 @@ func TestHasSession(t *testing.T) {
 		shouldErr bool
 	}{
 		{
-			name:      TmuxSessionExists,
-			expected:  SessionExists,
+			name:      "should return 0 if a tmux session exists",
+			expected:  TmuxSessionExists,
 			shouldErr: false,
 		},
 		{
-			name:      TmuxSessionNotExists,
-			expected:  SessionNotExists,
+			name:      "should return 1 if a tmux session does not exists",
+			expected:  TmuxSessionNotExists,
 			shouldErr: true,
 		},
 	}
@@ -83,13 +78,13 @@ func TestHasSession(t *testing.T) {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, Alias, HasSessionCmd, "-t", TmuxSessionName)
+	cmd := exec.CommandContext(ctx, Alias, TmuxHasSessionCmd, "-t", TestTmuxSession)
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			adapter := NewTmuxAdapter(NewCmdMock(cmd, tc.shouldErr))
 
-			if out := adapter.HasSession(ctx, TmuxSessionName); out != tc.expected {
+			if out := adapter.HasSession(ctx, TestTmuxSession); out != tc.expected {
 				t.Errorf("got %d, want %d", out, tc.expected)
 			}
 		})
@@ -103,7 +98,7 @@ func TestNewSession(t *testing.T) {
 		shouldErr bool
 	}{
 		{
-			name:      TmuxNewSession,
+			name:      "should create a new tmux session",
 			expected:  nil,
 			shouldErr: false,
 		},
@@ -112,13 +107,13 @@ func TestNewSession(t *testing.T) {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, Alias, NewSessionCmd, "-d", "-s", TmuxSessionName, "-n", TmuxWindowName)
+	cmd := exec.CommandContext(ctx, Alias, TmuxNewSessionCmd, "-d", "-s", TestTmuxSession, "-n", TestTmuxWindow)
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			adapter := NewTmuxAdapter(NewCmdMock(cmd, tc.shouldErr))
 
-			if out := adapter.NewSession(ctx, TmuxWindowName); out != tc.expected {
+			if out := adapter.NewSession(ctx, TestTmuxWindow); out != tc.expected {
 				t.Errorf("got %d, want %d", out, tc.expected)
 			}
 		})
