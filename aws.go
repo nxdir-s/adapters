@@ -407,7 +407,7 @@ func (a *AWSAdapter) DeleteObjects(ctx context.Context, bucket string, objects [
 			}
 
 			if err := s3Waiter.Wait(ctx, params, time.Minute); err != nil {
-				a.logger.Warn("timeout waiting for object deletion",
+				a.logger.Warn("timed out waiting for object deletion",
 					slog.String("bucket", bucket),
 					slog.String("key", *output.Deleted[i].Key),
 				)
