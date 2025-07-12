@@ -80,16 +80,24 @@ func WithProducer(topic string, brokers []string) KafkaOpt {
 	}
 }
 
+func WithKafkaSpanAttrs(attrs ...attribute.KeyValue) KafkaOpt {
+	return func(a *KafkaAdapter) error {
+		a.attributes = append(a.attributes, attrs...)
+		return nil
+	}
+}
+
 type KafkaConsumer interface {
 	Process(ctx context.Context, record *kgo.Record) error
 }
 
 type KafkaAdapter struct {
-	client    *kgo.Client
-	logger    *slog.Logger
-	tracer    trace.Tracer
-	topic     string
-	groupName string
+	client     *kgo.Client
+	logger     *slog.Logger
+	tracer     trace.Tracer
+	attributes []attribute.KeyValue
+	topic      string
+	groupName  string
 }
 
 // NewKafkaAdapter creates a new kafka adapter. Adapters should be configured to either produce or consume, but not both
@@ -125,6 +133,10 @@ func (a *KafkaAdapter) Send(ctx context.Context, record protoreflect.ProtoMessag
 		),
 	)
 	defer span.End()
+
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
 
 	data, err := proto.Marshal(record)
 	if err != nil {
@@ -169,6 +181,10 @@ func (a *KafkaAdapter) Consume(ctx context.Context, consumer KafkaConsumer) {
 				),
 			)
 
+			if a.attributes != nil {
+				span.SetAttributes(a.attributes...)
+			}
+
 			fetches := a.client.PollRecords(ctx, MaxPollFetches)
 			span.End()
 
@@ -181,6 +197,10 @@ func (a *KafkaAdapter) Consume(ctx context.Context, consumer KafkaConsumer) {
 					attribute.String("messaging.operation.type", "process"),
 				),
 			)
+
+			if a.attributes != nil {
+				span.SetAttributes(a.attributes...)
+			}
 
 			if errors := fetches.Errors(); len(errors) > 0 {
 				for _, e := range errors {
@@ -253,6 +273,10 @@ func (a *KafkaAdapter) CreateTopic(ctx context.Context, topic string) error {
 		),
 	)
 	defer span.End()
+
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
 
 	adminClient := kadm.NewClient(a.client)
 

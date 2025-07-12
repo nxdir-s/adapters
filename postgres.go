@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"time"
+	"unicode"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -65,6 +67,18 @@ func (e *ErrNilPgxPool) Error() string {
 	return "error nil connection pool"
 }
 
+type ErrInvalidStmt struct{}
+
+func (e *ErrInvalidStmt) Error() string {
+	return "invalid sql statement"
+}
+
+const (
+	SelectKeyword string = "select"
+	InsertKeyword string = "insert"
+	DeleteKeyword string = "delete"
+)
+
 type PgxPool interface {
 	Begin(ctx context.Context) (pgx.Tx, error)
 	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
@@ -96,17 +110,18 @@ func WithPgxTx[T any](tx PgxTx) PostgresOpt[T] {
 	}
 }
 
-type PostgresRows[T any] struct {
-	Sql  string
-	Args map[string]interface{}
-	Data []T
+func WithPostgresSpanAttrs[T any](attrs ...attribute.KeyValue) PostgresOpt[T] {
+	return func(a *PostgresAdapter[T]) {
+		a.attributes = append(a.attributes, attrs...)
+	}
 }
 
 type PostgresAdapter[T any] struct {
-	conn   PgxPool
-	tx     PgxTx
-	logger *slog.Logger
-	tracer trace.Tracer
+	conn       PgxPool
+	tx         PgxTx
+	logger     *slog.Logger
+	tracer     trace.Tracer
+	attributes []attribute.KeyValue
 }
 
 // NewPostgresAdapter creates a new PostgresAdapter
@@ -191,6 +206,10 @@ func (a *PostgresAdapter[T]) Exec(ctx context.Context, sql string, args map[stri
 	)
 	defer span.End()
 
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
+
 	resp, err := a.conn.Exec(ctx, sql, args)
 	if err != nil {
 		return 0, &ErrExecQuery{err}
@@ -206,6 +225,10 @@ func (a *PostgresAdapter[T]) Insert(ctx context.Context, sql string, args map[st
 		return 0, &ErrNilPgxPool{}
 	}
 
+	if !validStatement(InsertKeyword, sql) {
+		return 0, &ErrInvalidStmt{}
+	}
+
 	ctx, span := a.tracer.Start(ctx, "INSERT",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindClient),
@@ -216,6 +239,10 @@ func (a *PostgresAdapter[T]) Insert(ctx context.Context, sql string, args map[st
 		),
 	)
 	defer span.End()
+
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
 
 	var id int
 	if err := a.conn.QueryRow(ctx, sql, args).Scan(&id); err != nil {
@@ -240,6 +267,10 @@ func (a *PostgresAdapter[T]) Delete(ctx context.Context, sql string, args map[st
 		return &ErrNilPgxPool{}
 	}
 
+	if !validStatement(DeleteKeyword, sql) {
+		return &ErrInvalidStmt{}
+	}
+
 	ctx, span := a.tracer.Start(ctx, "DELETE",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindClient),
@@ -250,6 +281,10 @@ func (a *PostgresAdapter[T]) Delete(ctx context.Context, sql string, args map[st
 		),
 	)
 	defer span.End()
+
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
 
 	resp, err := a.conn.Exec(ctx, sql, args)
 	if err != nil {
@@ -268,10 +303,14 @@ const ExDeleteQuery string = `
     WHERE id = @id
 `
 
-func (a *PostgresAdapter[T]) Select(ctx context.Context, rows *PostgresRows[T]) error {
+func (a *PostgresAdapter[T]) Select(ctx context.Context, sql string, args map[string]interface{}) ([]T, error) {
 	if a.conn == nil {
 		a.logger.Error("nil connection in PostgresAdapter")
-		return &ErrNilPgxPool{}
+		return nil, &ErrNilPgxPool{}
+	}
+
+	if !validStatement(SelectKeyword, sql) {
+		return nil, &ErrInvalidStmt{}
 	}
 
 	ctx, span := a.tracer.Start(ctx, "SELECT",
@@ -280,21 +319,26 @@ func (a *PostgresAdapter[T]) Select(ctx context.Context, rows *PostgresRows[T]) 
 		trace.WithAttributes(
 			attribute.String("db.system.name", "postgresql"),
 			attribute.String("db.operation.name", "SELECT"),
-			attribute.String("db.query.text", rows.Sql),
+			attribute.String("db.query.text", sql),
 		),
 	)
 	defer span.End()
 
-	output, err := a.conn.Query(ctx, rows.Sql, rows.Args)
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
+
+	output, err := a.conn.Query(ctx, sql, args)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return &ErrQueryRow{err}
+		return nil, &ErrQueryRow{err}
 	}
 
-	if rows.Data, err = pgx.CollectRows(output, pgx.RowToStructByName[T]); err != nil {
-		return err
+	var rows []T
+	if rows, err = pgx.CollectRows(output, pgx.RowToStructByName[T]); err != nil {
+		return nil, err
 	}
 
-	return nil
+	return rows, nil
 }
 
 const ExSelectQuery string = `
@@ -320,6 +364,10 @@ func (a *PostgresAdapter[T]) RowExists(ctx context.Context, sql string, args map
 	)
 	defer span.End()
 
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
+
 	var id int
 	err := a.conn.QueryRow(ctx, sql, args).Scan(&id)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
@@ -338,3 +386,9 @@ const ExRowExistsQuery string = `
     FROM table
     WHERE id = @id
 `
+
+func validStatement(keyword string, sql string) bool {
+	stmt := strings.TrimLeftFunc(sql, unicode.IsSpace)
+
+	return strings.ToLower(keyword) == strings.ToLower(stmt[:len(keyword)])
+}

@@ -76,6 +76,18 @@ func WithS3Client(client S3Client) AWSOpt {
 	}
 }
 
+func WithSecretsManagerClient(client SecretsManagerClient) AWSOpt {
+	return func(a *AWSAdapter) {
+		a.sm = client
+	}
+}
+
+func WithAWSSpanAttrs(attrs ...attribute.KeyValue) AWSOpt {
+	return func(a *AWSAdapter) {
+		a.attributes = append(a.attributes, attrs...)
+	}
+}
+
 type S3Client interface {
 	HeadObject(ctx context.Context, params *s3.HeadObjectInput, optFns ...func(*s3.Options)) (*s3.HeadObjectOutput, error)
 	GetObject(ctx context.Context, params *s3.GetObjectInput, optFns ...func(*s3.Options)) (*s3.GetObjectOutput, error)
@@ -98,10 +110,11 @@ type SecretsManagerClient interface {
 }
 
 type AWSAdapter struct {
-	s3     S3Client
-	sm     SecretsManagerClient
-	logger *slog.Logger
-	tracer trace.Tracer
+	s3         S3Client
+	sm         SecretsManagerClient
+	logger     *slog.Logger
+	tracer     trace.Tracer
+	attributes []attribute.KeyValue
 }
 
 func NewAWSAdapter(logger *slog.Logger, tracer trace.Tracer, opts ...AWSOpt) *AWSAdapter {

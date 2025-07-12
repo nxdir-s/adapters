@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 	"google.golang.org/api/drive/v3"
@@ -130,15 +132,26 @@ func WithDriveConn(ctx context.Context) GoogleOpt {
 	}
 }
 
-type GoogleAdapter struct {
-	config *oauth2.Config
-	token  *oauth2.Token
-	client *http.Client
-	drive  *drive.Service
+func WithGoogleSpanAttrs(attrs ...attribute.KeyValue) GoogleOpt {
+	return func(a *GoogleAdapter) error {
+		a.attributes = append(a.attributes, attrs...)
+		return nil
+	}
 }
 
-func NewGoogleAdapter(opts ...GoogleOpt) (*GoogleAdapter, error) {
-	adapter := &GoogleAdapter{}
+type GoogleAdapter struct {
+	config     *oauth2.Config
+	token      *oauth2.Token
+	client     *http.Client
+	drive      *drive.Service
+	tracer     trace.Tracer
+	attributes []attribute.KeyValue
+}
+
+func NewGoogleAdapter(tracer trace.Tracer, opts ...GoogleOpt) (*GoogleAdapter, error) {
+	adapter := &GoogleAdapter{
+		tracer: tracer,
+	}
 
 	for _, opt := range opts {
 		if err := opt(adapter); err != nil {
@@ -152,6 +165,19 @@ func NewGoogleAdapter(opts ...GoogleOpt) (*GoogleAdapter, error) {
 func (a *GoogleAdapter) Upload(ctx context.Context, file io.Reader, name string) error {
 	if a.drive == nil {
 		return &ErrNilDrive{}
+	}
+
+	ctx, span := a.tracer.Start(ctx, "Google Upload",
+		trace.WithLinks(trace.LinkFromContext(ctx)),
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("file.name", name),
+		),
+	)
+	defer span.End()
+
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
 	}
 
 	df := &drive.File{
