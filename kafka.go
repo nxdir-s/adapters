@@ -264,7 +264,7 @@ func (a *KafkaAdapter) CreateTopic(ctx context.Context, topic string) error {
 		return nil
 	}
 
-	ctx, span := a.tracer.Start(ctx, "create.topic "+a.topic,
+	ctx, span := a.tracer.Start(ctx, "create topic "+a.topic,
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			attribute.String("messaging.system", "kafka"),

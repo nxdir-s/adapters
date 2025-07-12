@@ -135,7 +135,7 @@ func (a *AWSAdapter) GetObject(ctx context.Context, bucket string, key string) (
 		return nil, &ErrNilAWSClient{"s3"}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "AWSAdapter GetObject",
+	ctx, span := a.tracer.Start(ctx, "AWS GetObject",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
@@ -192,7 +192,7 @@ func (a *AWSAdapter) PutObject(ctx context.Context, data io.Reader, bucket strin
 		return &ErrNilAWSClient{"s3"}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "AWSAdapter PutObject",
+	ctx, span := a.tracer.Start(ctx, "AWS PutObject",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
@@ -237,7 +237,7 @@ func (a *AWSAdapter) ObjectExists(ctx context.Context, bucket string, key string
 		return 0, &ErrNilAWSClient{"s3"}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "AWSAdapter ObjectExists",
+	ctx, span := a.tracer.Start(ctx, "AWS ObjectExists",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
@@ -288,7 +288,7 @@ func (a *AWSAdapter) ListObjects(ctx context.Context, bucket string, prefix stri
 		return nil, &ErrNilAWSClient{"s3"}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "AWSAdapter ListObjects",
+	ctx, span := a.tracer.Start(ctx, "AWS ListObjects",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
@@ -363,7 +363,7 @@ func (a *AWSAdapter) DeleteObjects(ctx context.Context, bucket string, objects [
 		return nil
 	}
 
-	ctx, span := a.tracer.Start(ctx, "AWSAdapter DeleteObjects",
+	ctx, span := a.tracer.Start(ctx, "AWS DeleteObjects",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
@@ -480,7 +480,7 @@ func (a *AWSAdapter) GetSecretValue(ctx context.Context, secretArn string, secre
 		return "", &ErrNilAWSClient{"secretsmanager"}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "AWSAdapter GetSecretValue",
+	ctx, span := a.tracer.Start(ctx, "AWS GetSecretValue",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
