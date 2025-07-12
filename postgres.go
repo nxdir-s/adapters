@@ -99,7 +99,7 @@ func WithPgxTx[T any](tx PgxTx) PostgresOpt[T] {
 type PostgresRow struct {
 	Collection string
 	Query      string
-	NamedArgs  pgx.NamedArgs
+	NamedArgs  map[string]any
 }
 
 type PostgresRows[T any] struct {
