@@ -154,11 +154,11 @@ func (a *GoogleAdapter) UploadToDrive(ctx context.Context, file io.Reader, name 
 		return &ErrNilDrive{}
 	}
 
-	if _, err := a.drive.Files.Create(
-		&drive.File{
-			Name: name,
-		},
-	).Media(file).Do(); err != nil {
+	df := &drive.File{
+		Name: name,
+	}
+
+	if _, err := a.drive.Files.Create(df).Media(file).Do(); err != nil {
 		return &ErrDriveUpload{err}
 	}
 
