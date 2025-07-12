@@ -86,8 +86,8 @@ func NewTmuxAdapter(adapter Command) *TmuxAdapter {
 	}
 }
 
-// HasSession checks for an already existing tmux session
-func (a *TmuxAdapter) HasSession(ctx context.Context, session string) int {
+// SessionExists checks for an already existing tmux session
+func (a *TmuxAdapter) SessionExists(ctx context.Context, session string) int {
 	cmd := exec.CommandContext(ctx, Alias, TmuxHasSessionCmd, "-t", session)
 
 	fmt.Fprintf(os.Stdout, "checking for existing session '%s'\n", session)
