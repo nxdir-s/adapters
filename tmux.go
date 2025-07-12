@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 type ErrNewSession struct {
@@ -135,6 +136,27 @@ func (a *TmuxAdapter) AttachSession(ctx context.Context, session string) error {
 		fmt.Fprintf(os.Stdout, "%s failed: %s\n", TmuxAttachCmd, err.Error())
 
 		return &ErrAttachSession{session, err}
+	}
+
+	if _, err := io.Copy(os.Stdout, output); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// SendKeys executes the supplied command
+func (a *TmuxAdapter) SendKeys(ctx context.Context, cmd []string, session string, window string) error {
+	cmdArgs := []string{TmuxSendKeysCmd, "-t", session + ":" + window}
+	cmdArgs = append(cmdArgs, cmd...)
+
+	command := exec.CommandContext(ctx, Alias, cmdArgs...)
+
+	output, err := a.cmd.Exec(ctx, command)
+	if err != nil {
+		fmt.Fprintf(os.Stdout, "%s failed: %s\n", TmuxSendKeysCmd, err.Error())
+
+		return &ErrSendKeys{strings.Join(cmdArgs, " "), err}
 	}
 
 	if _, err := io.Copy(os.Stdout, output); err != nil {
