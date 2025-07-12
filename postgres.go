@@ -153,6 +153,11 @@ func (a *PostgresAdapter[T]) Rollback(ctx context.Context) error {
 	return a.tx.Rollback(ctx)
 }
 
+// ConnectionPool returns the underlying pgxpool
+func (a *PostgresAdapter[T]) ConnectionPool() PgxPool {
+	return a.conn
+}
+
 // Insert creates a new row returns the id
 func (a *PostgresAdapter[T]) Insert(ctx context.Context, row *PostgresRow) (int, error) {
 	ctx, span := a.tracer.Start(ctx, "INSERT "+row.Collection,
