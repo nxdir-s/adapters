@@ -9,8 +9,8 @@ import (
 
 type CmdAdapter struct{}
 
-func NewCmdAdapter(ctx context.Context) (*CmdAdapter, error) {
-	return &CmdAdapter{}, nil
+func NewCmdAdapter() *CmdAdapter {
+	return &CmdAdapter{}
 }
 
 func (a *CmdAdapter) Exec(ctx context.Context, cmd *exec.Cmd) (io.Reader, error) {
