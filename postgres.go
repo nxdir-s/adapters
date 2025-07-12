@@ -270,12 +270,9 @@ func (a *PostgresAdapter[T]) Select(ctx context.Context, rows *PostgresRows[T]) 
 		return &ErrQueryRow{err}
 	}
 
-	collection, err := pgx.CollectRows(output, pgx.RowToStructByName[T])
-	if err != nil {
+	if rows.Data, err = pgx.CollectRows(output, pgx.RowToStructByName[T]); err != nil {
 		return err
 	}
-
-	rows.Data = collection
 
 	return nil
 }
