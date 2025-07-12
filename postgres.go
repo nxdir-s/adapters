@@ -96,14 +96,9 @@ func WithPgxTx[T any](tx PgxTx) PostgresOpt[T] {
 	}
 }
 
-type PostgresRow struct {
-	Collection string
-	Query      string
-	NamedArgs  map[string]interface{}
-}
-
 type PostgresRows[T any] struct {
-	PostgresRow
+	Sql  string
+	Args map[string]interface{}
 	Data []T
 }
 
@@ -205,27 +200,25 @@ func (a *PostgresAdapter[T]) Exec(ctx context.Context, sql string, args map[stri
 }
 
 // Insert creates a new row returns the id
-func (a *PostgresAdapter[T]) Insert(ctx context.Context, row *PostgresRow) (int, error) {
+func (a *PostgresAdapter[T]) Insert(ctx context.Context, sql string, args map[string]interface{}) (int, error) {
 	if a.conn == nil {
 		a.logger.Error("nil connection in PostgresAdapter")
 		return 0, &ErrNilPgxPool{}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "INSERT "+row.Collection,
+	ctx, span := a.tracer.Start(ctx, "INSERT",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			attribute.String("db.system.name", "postgresql"),
 			attribute.String("db.operation.name", "INSERT"),
-			attribute.String("db.collection.name", row.Collection),
-			attribute.String("db.query.summary", "INSERT "+row.Collection),
-			attribute.String("db.query.text", row.Query),
+			attribute.String("db.query.text", sql),
 		),
 	)
 	defer span.End()
 
 	var id int
-	if err := a.conn.QueryRow(ctx, row.Query, row.NamedArgs).Scan(&id); err != nil {
+	if err := a.conn.QueryRow(ctx, sql, args).Scan(&id); err != nil {
 		return 0, &ErrExecQuery{err}
 	}
 
@@ -241,26 +234,24 @@ const ExInsertQuery string = `
 `
 
 // Delete deletes the supplied row
-func (a *PostgresAdapter[T]) Delete(ctx context.Context, row *PostgresRow) error {
+func (a *PostgresAdapter[T]) Delete(ctx context.Context, sql string, args map[string]interface{}) error {
 	if a.conn == nil {
 		a.logger.Error("nil connection in PostgresAdapter")
 		return &ErrNilPgxPool{}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "DELETE "+row.Collection,
+	ctx, span := a.tracer.Start(ctx, "DELETE",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			attribute.String("db.system.name", "postgresql"),
 			attribute.String("db.operation.name", "DELETE"),
-			attribute.String("db.collection.name", row.Collection),
-			attribute.String("db.query.summary", "DELETE "+row.Collection),
-			attribute.String("db.query.text", row.Query),
+			attribute.String("db.query.text", sql),
 		),
 	)
 	defer span.End()
 
-	resp, err := a.conn.Exec(ctx, row.Query, row.NamedArgs)
+	resp, err := a.conn.Exec(ctx, sql, args)
 	if err != nil {
 		return &ErrExecQuery{err}
 	}
@@ -283,20 +274,18 @@ func (a *PostgresAdapter[T]) Select(ctx context.Context, rows *PostgresRows[T]) 
 		return &ErrNilPgxPool{}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "SELECT "+rows.Collection,
+	ctx, span := a.tracer.Start(ctx, "SELECT",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			attribute.String("db.system.name", "postgresql"),
 			attribute.String("db.operation.name", "SELECT"),
-			attribute.String("db.collection.name", rows.Collection),
-			attribute.String("db.query.summary", "SELECT "+rows.Collection),
-			attribute.String("db.query.text", rows.Query),
+			attribute.String("db.query.text", rows.Sql),
 		),
 	)
 	defer span.End()
 
-	output, err := a.conn.Query(ctx, rows.Query, rows.NamedArgs)
+	output, err := a.conn.Query(ctx, rows.Sql, rows.Args)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return &ErrQueryRow{err}
 	}
@@ -314,27 +303,25 @@ const ExSelectQuery string = `
     WHERE id = @id
 `
 
-func (a *PostgresAdapter[T]) RowExists(ctx context.Context, row *PostgresRow) (bool, error) {
+func (a *PostgresAdapter[T]) RowExists(ctx context.Context, sql string, args map[string]interface{}) (bool, error) {
 	if a.conn == nil {
 		a.logger.Error("nil connection in PostgresAdapter")
 		return false, &ErrNilPgxPool{}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "SELECT "+row.Collection,
+	ctx, span := a.tracer.Start(ctx, "SELECT",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
 			attribute.String("db.system.name", "postgresql"),
 			attribute.String("db.operation.name", "SELECT"),
-			attribute.String("db.collection.name", row.Collection),
-			attribute.String("db.query.summary", "SELECT "+row.Collection+" by id"),
-			attribute.String("db.query.text", row.Query),
+			attribute.String("db.query.text", sql),
 		),
 	)
 	defer span.End()
 
 	var id int
-	err := a.conn.QueryRow(ctx, row.Query, row.NamedArgs).Scan(&id)
+	err := a.conn.QueryRow(ctx, sql, args).Scan(&id)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
 		return false, &ErrQueryRow{err}
 	}
