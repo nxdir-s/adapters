@@ -149,7 +149,7 @@ func NewGoogleAdapter(opts ...GoogleOpt) (*GoogleAdapter, error) {
 	return adapter, nil
 }
 
-func (a *GoogleAdapter) UploadToDrive(ctx context.Context, file io.Reader, name string) error {
+func (a *GoogleAdapter) Upload(ctx context.Context, file io.Reader, name string) error {
 	if a.drive == nil {
 		return &ErrNilDrive{}
 	}
