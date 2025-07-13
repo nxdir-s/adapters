@@ -36,6 +36,14 @@ func (e *ErrTypeCast) Error() string {
 	return "failed to type cast " + e.value
 }
 
+type ErrPutObject struct {
+	err error
+}
+
+func (e *ErrPutObject) Error() string {
+	return "failed to upload to s3: " + e.err.Error()
+}
+
 type ErrListObjects struct {
 	err error
 }
@@ -225,7 +233,7 @@ func (a *AWSAdapter) PutObject(ctx context.Context, data io.Reader, bucket strin
 			slog.String("err", err.Error()),
 		)
 
-		return err
+		return &ErrPutObject{err}
 
 	}
 
@@ -475,7 +483,7 @@ func getDeleteList(objectIds []types.ObjectIdentifier, index int) []types.Object
 	return objectIds
 }
 
-func (a *AWSAdapter) GetSecretValue(ctx context.Context, secretArn string, secretName string) (string, error) {
+func (a *AWSAdapter) GetSecret(ctx context.Context, arn string, name string) (string, error) {
 	if a.sm == nil {
 		return "", &ErrNilAWSClient{"secretsmanager"}
 	}
@@ -484,7 +492,7 @@ func (a *AWSAdapter) GetSecretValue(ctx context.Context, secretArn string, secre
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
-			attribute.String("aws.secretsmanager.secretName", secretName),
+			attribute.String("aws.secretsmanager.secretName", name),
 		),
 	)
 	defer span.End()
@@ -494,11 +502,11 @@ func (a *AWSAdapter) GetSecretValue(ctx context.Context, secretArn string, secre
 	}
 
 	params := &secretsmanager.GetSecretValueInput{
-		SecretId: aws.String(secretArn),
+		SecretId: aws.String(arn),
 	}
 
 	a.logger.Info("retrieving secret from secrets manager",
-		slog.String("secretName", secretName),
+		slog.String("secretName", name),
 	)
 
 	output, err := a.sm.GetSecretValue(ctx, params)
