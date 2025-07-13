@@ -244,14 +244,14 @@ func TestObjectExists(t *testing.T) {
 	cases := []struct {
 		key         string
 		bucket      string
-		expectedVal bool
+		expectedVal int
 		expectedErr error
 		s3Mock      *mockS3Client
 	}{
 		{
 			key:         TestKey,
 			bucket:      TestBucket,
-			expectedVal: true,
+			expectedVal: S3ObjectExists,
 			expectedErr: nil,
 			s3Mock: newMockS3Client(
 				withHeadObject(&s3.HeadObjectOutput{}, nil),
@@ -260,7 +260,7 @@ func TestObjectExists(t *testing.T) {
 		{
 			key:         TestKey,
 			bucket:      TestBucket,
-			expectedVal: false,
+			expectedVal: S3ObjectNotExists,
 			expectedErr: nil,
 			s3Mock: newMockS3Client(
 				withHeadObject(&s3.HeadObjectOutput{}, &smithy.GenericAPIError{
@@ -271,7 +271,7 @@ func TestObjectExists(t *testing.T) {
 		{
 			key:         TestKey,
 			bucket:      TestBucket,
-			expectedVal: false,
+			expectedVal: S3ObjectNotExists,
 			expectedErr: &ErrTest{},
 			s3Mock: newMockS3Client(
 				withHeadObject(&s3.HeadObjectOutput{}, &ErrTest{}),
@@ -289,9 +289,12 @@ func TestObjectExists(t *testing.T) {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			adapter := NewAWSAdapter(logger, otel.Tracer("aws"), WithS3Client(tt.s3Mock))
 
-			err := adapter.PutObject(ctx, bytes.NewReader(testObject), tt.bucket, tt.key)
+			out, err := adapter.ObjectExists(ctx, tt.bucket, tt.key)
 
 			assert.Equal(t, tt.expectedErr, err)
+			if err == nil {
+				assert.Equal(t, tt.expectedVal, out)
+			}
 		})
 	}
 }
@@ -490,36 +493,45 @@ func (e *ErrMissingMsg) Error() string {
 	return "missing error message for " + e.errType
 }
 
-func genErr[T any]() (err *T) {
-	return err
+func genErr[T any]() *T {
+	return new(T)
 }
 
 func TestAWSErrors(t *testing.T) {
-	if err := genErr[ErrNilAWSClient](); len(err.Error()) == 0 {
+	var err error
+
+	err = &ErrNilAWSClient{}
+	if len(err.Error()) == 0 {
 		t.Error(&ErrMissingMsg{"ErrNilAWSClient"})
 	}
 
-	if err := genErr[ErrTypeCast](); len(err.Error()) == 0 {
+	err = &ErrTypeCast{"test"}
+	if len(err.Error()) == 0 {
 		t.Error(&ErrMissingMsg{"ErrTypeCast"})
 	}
 
-	if err := genErr[ErrPutObject](); len(err.Error()) == 0 {
+	err = &ErrPutObject{&ErrTest{}}
+	if len(err.Error()) == 0 {
 		t.Error(&ErrMissingMsg{"ErrPutObject"})
 	}
 
-	if err := genErr[ErrListObjects](); len(err.Error()) == 0 {
+	err = &ErrListObjects{&ErrTest{}}
+	if len(err.Error()) == 0 {
 		t.Error(&ErrMissingMsg{"ErrListObjects"})
 	}
 
-	if err := genErr[ErrDeleteObjects](); len(err.Error()) == 0 {
+	err = &ErrDeleteObjects{&ErrTest{}}
+	if len(err.Error()) == 0 {
 		t.Error(&ErrMissingMsg{"ErrDeleteObjects"})
 	}
 
-	if err := genErr[ErrS3Output](); len(err.Error()) == 0 {
+	err = &ErrS3Output{"test"}
+	if len(err.Error()) == 0 {
 		t.Error(&ErrMissingMsg{"ErrS3Output"})
 	}
 
-	if err := genErr[ErrGetSecret](); len(err.Error()) == 0 {
+	err = &ErrGetSecret{&ErrTest{}}
+	if len(err.Error()) == 0 {
 		t.Error(&ErrMissingMsg{"ErrGetSecret"})
 	}
 }

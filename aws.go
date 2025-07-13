@@ -240,9 +240,14 @@ func (a *AWSAdapter) PutObject(ctx context.Context, data io.Reader, bucket strin
 	return nil
 }
 
+const (
+	S3ObjectNotExists int = iota
+	S3ObjectExists
+)
+
 func (a *AWSAdapter) ObjectExists(ctx context.Context, bucket string, key string) (int, error) {
 	if a.s3 == nil {
-		return 0, &ErrNilAWSClient{"s3"}
+		return S3ObjectNotExists, &ErrNilAWSClient{"s3"}
 	}
 
 	ctx, span := a.tracer.Start(ctx, "S3 ObjectExists",
@@ -277,10 +282,10 @@ func (a *AWSAdapter) ObjectExists(ctx context.Context, bucket string, key string
 				slog.String("key", key),
 			)
 
-			return 0, nil
+			return S3ObjectNotExists, nil
 		}
 
-		return 0, err
+		return S3ObjectNotExists, err
 	}
 
 	a.logger.Info("object exists in s3",
@@ -288,7 +293,7 @@ func (a *AWSAdapter) ObjectExists(ctx context.Context, bucket string, key string
 		slog.String("key", key),
 	)
 
-	return 1, nil
+	return S3ObjectExists, nil
 }
 
 func (a *AWSAdapter) ListObjects(ctx context.Context, bucket string, prefix string, pager interface{}) ([]string, error) {
