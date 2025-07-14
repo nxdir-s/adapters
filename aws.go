@@ -36,12 +36,28 @@ func (e *ErrTypeCast) Error() string {
 	return "failed to type cast " + e.value
 }
 
+type ErrGetObject struct {
+	err error
+}
+
+func (e *ErrGetObject) Error() string {
+	return "failed to get object from s3: " + e.err.Error()
+}
+
 type ErrPutObject struct {
 	err error
 }
 
 func (e *ErrPutObject) Error() string {
 	return "failed to upload to s3: " + e.err.Error()
+}
+
+type ErrHeadObject struct {
+	err error
+}
+
+func (e *ErrHeadObject) Error() string {
+	return "failed HeadObject request to s3: " + e.err.Error()
 }
 
 type ErrListObjects struct {
@@ -175,14 +191,14 @@ func (a *AWSAdapter) GetObject(ctx context.Context, bucket string, key string) (
 			slog.String("err", err.Error()),
 		)
 
-		return nil, err
+		return nil, &ErrGetObject{err}
 	}
 
 	pr, pw := io.Pipe()
 
 	go func() {
 		if _, err := io.Copy(pw, output.Body); err != nil {
-			a.logger.Error("failed to copy output body",
+			a.logger.Error("failed to copy GetObject output",
 				slog.String("bucket", bucket),
 				slog.String("key", key),
 				slog.String("err", err.Error()),
@@ -285,7 +301,7 @@ func (a *AWSAdapter) ObjectExists(ctx context.Context, bucket string, key string
 			return S3ObjectNotExists, nil
 		}
 
-		return S3ObjectNotExists, err
+		return S3ObjectNotExists, &ErrHeadObject{err}
 	}
 
 	a.logger.Info("object exists in s3",

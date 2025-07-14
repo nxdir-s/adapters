@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 //go:embed testdata/object.json
@@ -142,11 +143,13 @@ type TestObject struct {
 }
 
 const (
-	TestArn    string = "arn:partition:service:region:account-id:resource-id"
-	TestKey    string = "object.json"
-	TestBucket string = "s3-bucket"
-	TestPrefix string = "obj/tests/"
-	TestSecret string = "secret"
+	TestArn     string = "arn:partition:service:region:account-id:resource-id"
+	TestKey     string = "object.json"
+	TestBucket  string = "s3-bucket"
+	TestPrefix  string = "obj/tests/"
+	TestSecret  string = "secret"
+	TestAttrKey string = "test.t"
+	TestAttrVal string = "unit"
 )
 
 func TestGetObject(t *testing.T) {
@@ -154,17 +157,43 @@ func TestGetObject(t *testing.T) {
 		key         string
 		bucket      string
 		expectedErr error
-		s3Mock      *mockS3Client
+		opts        []AWSOpt
 	}{
 		{
 			key:         TestKey,
 			bucket:      TestBucket,
 			expectedErr: nil,
-			s3Mock: newMockS3Client(
-				withGetObject(&s3.GetObjectOutput{
-					Body: io.NopCloser(bytes.NewReader(testObject)),
-				}, nil),
-			),
+			opts: []AWSOpt{
+				WithS3Client(newMockS3Client(
+					withGetObject(&s3.GetObjectOutput{
+						Body: io.NopCloser(bytes.NewReader(testObject)),
+					}, nil),
+				)),
+				WithAWSSpanAttrs(
+					attribute.String(TestAttrKey, TestAttrVal),
+				),
+			},
+		},
+		{
+			key:         TestKey,
+			bucket:      TestBucket,
+			expectedErr: &ErrGetObject{&ErrTest{}},
+			opts: []AWSOpt{
+				WithS3Client(newMockS3Client(
+					withGetObject(&s3.GetObjectOutput{
+						Body: io.NopCloser(bytes.NewReader([]byte{})),
+					}, &ErrTest{}),
+				)),
+				WithAWSSpanAttrs(
+					attribute.String(TestAttrKey, TestAttrVal),
+				),
+			},
+		},
+		{
+			key:         TestKey,
+			bucket:      TestBucket,
+			expectedErr: &ErrNilAWSClient{"s3"},
+			opts:        []AWSOpt{},
 		},
 	}
 
@@ -181,7 +210,7 @@ func TestGetObject(t *testing.T) {
 
 	for i, tt := range cases {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			adapter := NewAWSAdapter(logger, otel.Tracer("aws"), WithS3Client(tt.s3Mock))
+			adapter := NewAWSAdapter(logger, otel.Tracer("aws"), tt.opts...)
 
 			out, err := adapter.GetObject(ctx, tt.bucket, tt.key)
 
@@ -203,23 +232,39 @@ func TestPutObject(t *testing.T) {
 		key         string
 		bucket      string
 		expectedErr error
-		s3Mock      *mockS3Client
+		opts        []AWSOpt
 	}{
 		{
 			key:         TestKey,
 			bucket:      TestBucket,
 			expectedErr: nil,
-			s3Mock: newMockS3Client(
-				withPutObject(&s3.PutObjectOutput{}, nil),
-			),
+			opts: []AWSOpt{
+				WithS3Client(newMockS3Client(
+					withPutObject(&s3.PutObjectOutput{}, nil),
+				)),
+				WithAWSSpanAttrs(
+					attribute.String(TestAttrKey, TestAttrVal),
+				),
+			},
 		},
 		{
 			key:         TestKey,
 			bucket:      TestBucket,
 			expectedErr: &ErrPutObject{&ErrTest{}},
-			s3Mock: newMockS3Client(
-				withPutObject(&s3.PutObjectOutput{}, &ErrTest{}),
-			),
+			opts: []AWSOpt{
+				WithS3Client(newMockS3Client(
+					withPutObject(&s3.PutObjectOutput{}, &ErrTest{}),
+				)),
+				WithAWSSpanAttrs(
+					attribute.String(TestAttrKey, TestAttrVal),
+				),
+			},
+		},
+		{
+			key:         TestKey,
+			bucket:      TestBucket,
+			expectedErr: &ErrNilAWSClient{"s3"},
+			opts:        []AWSOpt{},
 		},
 	}
 
@@ -231,7 +276,7 @@ func TestPutObject(t *testing.T) {
 
 	for i, tt := range cases {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			adapter := NewAWSAdapter(logger, otel.Tracer("aws"), WithS3Client(tt.s3Mock))
+			adapter := NewAWSAdapter(logger, otel.Tracer("aws"), tt.opts...)
 
 			err := adapter.PutObject(ctx, bytes.NewReader(testObject), tt.bucket, tt.key)
 
@@ -246,36 +291,51 @@ func TestObjectExists(t *testing.T) {
 		bucket      string
 		expectedVal int
 		expectedErr error
-		s3Mock      *mockS3Client
+		opts        []AWSOpt
 	}{
 		{
 			key:         TestKey,
 			bucket:      TestBucket,
 			expectedVal: S3ObjectExists,
 			expectedErr: nil,
-			s3Mock: newMockS3Client(
-				withHeadObject(&s3.HeadObjectOutput{}, nil),
-			),
+			opts: []AWSOpt{
+				WithS3Client(newMockS3Client(
+					withHeadObject(&s3.HeadObjectOutput{}, nil),
+				)),
+				WithAWSSpanAttrs(
+					attribute.String(TestAttrKey, TestAttrVal),
+				),
+			},
 		},
 		{
 			key:         TestKey,
 			bucket:      TestBucket,
 			expectedVal: S3ObjectNotExists,
 			expectedErr: nil,
-			s3Mock: newMockS3Client(
-				withHeadObject(&s3.HeadObjectOutput{}, &smithy.GenericAPIError{
-					Code: "NotFound",
-				}),
-			),
+			opts: []AWSOpt{
+				WithS3Client(newMockS3Client(
+					withHeadObject(&s3.HeadObjectOutput{}, &smithy.GenericAPIError{
+						Code: "NotFound",
+					}),
+				)),
+			},
 		},
 		{
 			key:         TestKey,
 			bucket:      TestBucket,
 			expectedVal: S3ObjectNotExists,
-			expectedErr: &ErrTest{},
-			s3Mock: newMockS3Client(
-				withHeadObject(&s3.HeadObjectOutput{}, &ErrTest{}),
-			),
+			expectedErr: &ErrHeadObject{&ErrTest{}},
+			opts: []AWSOpt{
+				WithS3Client(newMockS3Client(
+					withHeadObject(&s3.HeadObjectOutput{}, &ErrTest{}),
+				)),
+			},
+		},
+		{
+			key:         TestKey,
+			bucket:      TestBucket,
+			expectedErr: &ErrNilAWSClient{"s3"},
+			opts:        []AWSOpt{},
 		},
 	}
 
@@ -287,7 +347,7 @@ func TestObjectExists(t *testing.T) {
 
 	for i, tt := range cases {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			adapter := NewAWSAdapter(logger, otel.Tracer("aws"), WithS3Client(tt.s3Mock))
+			adapter := NewAWSAdapter(logger, otel.Tracer("aws"), tt.opts...)
 
 			out, err := adapter.ObjectExists(ctx, tt.bucket, tt.key)
 
@@ -307,15 +367,20 @@ func TestListObjects(t *testing.T) {
 		bucket        string
 		prefix        string
 		expectedErr   error
-		s3Mock        *mockS3Client
+		opts          []AWSOpt
 		expectedCount int
 		pager         ListObjectsV2Pager
 	}{
 		{
-			bucket:        TestBucket,
-			prefix:        TestPrefix,
-			expectedErr:   nil,
-			s3Mock:        newMockS3Client(),
+			bucket:      TestBucket,
+			prefix:      TestPrefix,
+			expectedErr: nil,
+			opts: []AWSOpt{
+				WithS3Client(newMockS3Client()),
+				WithAWSSpanAttrs(
+					attribute.String(TestAttrKey, TestAttrVal),
+				),
+			},
 			expectedCount: 9,
 			pager: &mockListObjectsV2Pager{
 				Pages: []*s3.ListObjectsV2Output{
@@ -340,6 +405,12 @@ func TestListObjects(t *testing.T) {
 				},
 			},
 		},
+		{
+			bucket:      TestBucket,
+			prefix:      TestPrefix,
+			expectedErr: &ErrNilAWSClient{"s3"},
+			opts:        []AWSOpt{},
+		},
 	}
 
 	ctx, cancel := context.WithCancel(t.Context())
@@ -350,7 +421,7 @@ func TestListObjects(t *testing.T) {
 
 	for i, tt := range cases {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			adapter := NewAWSAdapter(logger, otel.Tracer("aws"), WithS3Client(tt.s3Mock))
+			adapter := NewAWSAdapter(logger, otel.Tracer("aws"), tt.opts...)
 
 			out, err := adapter.ListObjects(ctx, tt.bucket, tt.prefix, tt.pager)
 
@@ -371,7 +442,7 @@ func TestDeleteObjects(t *testing.T) {
 		objectKeys  []string
 		waiter      ObjectNotExistsWaiter
 		expectedErr error
-		s3Mock      *mockS3Client
+		opts        []AWSOpt
 	}{
 		{
 			bucket:     TestBucket,
@@ -380,13 +451,25 @@ func TestDeleteObjects(t *testing.T) {
 				expectedErr: nil,
 			},
 			expectedErr: nil,
-			s3Mock: newMockS3Client(
-				withDeleteObjects(&s3.DeleteObjectsOutput{
-					Deleted: genData(int(keyCount), types.DeletedObject{
-						Key: &testKey,
-					}),
-				}, nil),
-			),
+			opts: []AWSOpt{
+				WithS3Client(newMockS3Client(
+					withDeleteObjects(&s3.DeleteObjectsOutput{
+						Deleted: genData(int(keyCount), types.DeletedObject{
+							Key: &testKey,
+						}),
+					}, nil),
+				)),
+				WithAWSSpanAttrs(
+					attribute.String(TestAttrKey, TestAttrVal),
+				),
+			},
+		},
+		{
+			bucket:      TestBucket,
+			objectKeys:  genData(0, testKey),
+			waiter:      nil,
+			expectedErr: &ErrNilAWSClient{"s3"},
+			opts:        []AWSOpt{},
 		},
 	}
 
@@ -398,7 +481,7 @@ func TestDeleteObjects(t *testing.T) {
 
 	for i, tt := range cases {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			adapter := NewAWSAdapter(logger, otel.Tracer("aws"), WithS3Client(tt.s3Mock))
+			adapter := NewAWSAdapter(logger, otel.Tracer("aws"), tt.opts...)
 
 			err := adapter.DeleteObjects(ctx, tt.bucket, tt.objectKeys, tt.waiter)
 
@@ -451,17 +534,38 @@ func TestGetSecretValue(t *testing.T) {
 		arn         string
 		name        string
 		expectedErr error
-		smMock      *mockSecretsClient
+		opts        []AWSOpt
 	}{
 		{
 			arn:         TestArn,
 			name:        TestKey,
 			expectedErr: nil,
-			smMock: newMockSecretsClient(
-				withGetSecretValue(&secretsmanager.GetSecretValueOutput{
-					SecretString: &testSecret,
-				}, nil),
-			),
+			opts: []AWSOpt{
+				WithSecretsManagerClient(newMockSecretsClient(
+					withGetSecretValue(&secretsmanager.GetSecretValueOutput{
+						SecretString: &testSecret,
+					}, nil),
+				)),
+				WithAWSSpanAttrs(
+					attribute.String(TestAttrKey, TestAttrVal),
+				),
+			},
+		},
+		{
+			arn:         TestArn,
+			name:        TestKey,
+			expectedErr: &ErrGetSecret{&ErrTest{}},
+			opts: []AWSOpt{
+				WithSecretsManagerClient(newMockSecretsClient(
+					withGetSecretValue(&secretsmanager.GetSecretValueOutput{}, &ErrTest{}),
+				)),
+			},
+		},
+		{
+			arn:         TestArn,
+			name:        TestKey,
+			expectedErr: &ErrNilAWSClient{"secretsmanager"},
+			opts:        []AWSOpt{},
 		},
 	}
 
@@ -473,7 +577,7 @@ func TestGetSecretValue(t *testing.T) {
 
 	for i, tt := range cases {
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
-			adapter := NewAWSAdapter(logger, otel.Tracer("aws"), WithSecretsManagerClient(tt.smMock))
+			adapter := NewAWSAdapter(logger, otel.Tracer("aws"), tt.opts...)
 
 			out, err := adapter.GetSecret(ctx, tt.arn, tt.name)
 
@@ -510,9 +614,19 @@ func TestAWSErrors(t *testing.T) {
 		t.Error(&ErrMissingMsg{"ErrTypeCast"})
 	}
 
+	err = &ErrGetObject{&ErrTest{}}
+	if len(err.Error()) == 0 {
+		t.Error(&ErrMissingMsg{"ErrGetObject"})
+	}
+
 	err = &ErrPutObject{&ErrTest{}}
 	if len(err.Error()) == 0 {
 		t.Error(&ErrMissingMsg{"ErrPutObject"})
+	}
+
+	err = &ErrHeadObject{&ErrTest{}}
+	if len(err.Error()) == 0 {
+		t.Error(&ErrMissingMsg{"ErrHeadObject"})
 	}
 
 	err = &ErrListObjects{&ErrTest{}}
