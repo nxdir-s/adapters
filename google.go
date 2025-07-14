@@ -167,7 +167,7 @@ func (a *GoogleAdapter) Upload(ctx context.Context, file io.Reader, name string)
 		return &ErrNilDrive{}
 	}
 
-	ctx, span := a.tracer.Start(ctx, "Google Upload",
+	_, span := a.tracer.Start(ctx, "Google Upload",
 		trace.WithLinks(trace.LinkFromContext(ctx)),
 		trace.WithSpanKind(trace.SpanKindClient),
 		trace.WithAttributes(
