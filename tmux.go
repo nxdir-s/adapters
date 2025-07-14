@@ -100,7 +100,8 @@ func (a *TmuxAdapter) HasSession(ctx context.Context, session string) int {
 	}
 
 	if _, err := io.Copy(os.Stdout, output); err != nil {
-		return TmuxSessionNotExists
+		fmt.Fprintf(os.Stdout, "error copying output to Stdout: %s\n", err.Error())
+		return TmuxSessionExists
 	}
 
 	return TmuxSessionExists

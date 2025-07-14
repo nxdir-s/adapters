@@ -143,7 +143,7 @@ func NewPostgresAdapter(pool PgxPool, logger *slog.Logger, tracer trace.Tracer, 
 	return adapter
 }
 
-// NewSPostgresAdapter wraps an existing PostgresAdapter and provides select into struct method
+// NewSPostgresAdapter wraps an existing PostgresAdapter and provides select into generic struct method
 func NewSPostgresAdapter[T any](adapter *PostgresAdapter) *SPostgresAdapter[T] {
 	return &SPostgresAdapter[T]{adapter}
 }
