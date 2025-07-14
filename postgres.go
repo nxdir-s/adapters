@@ -101,22 +101,22 @@ type PgxTx interface {
 	Rollback(ctx context.Context) error
 }
 
-type PostgresOpt[T any] func(a *PostgresAdapter[T])
+type PostgresOpt func(a *PostgresAdapter)
 
 // WithPgxTx sets the transaction adapter
-func WithPgxTx[T any](tx PgxTx) PostgresOpt[T] {
-	return func(a *PostgresAdapter[T]) {
+func WithPgxTx(tx PgxTx) PostgresOpt {
+	return func(a *PostgresAdapter) {
 		a.tx = tx
 	}
 }
 
-func WithPostgresSpanAttrs[T any](attrs ...attribute.KeyValue) PostgresOpt[T] {
-	return func(a *PostgresAdapter[T]) {
+func WithPostgresSpanAttrs(attrs ...attribute.KeyValue) PostgresOpt {
+	return func(a *PostgresAdapter) {
 		a.attributes = append(a.attributes, attrs...)
 	}
 }
 
-type PostgresAdapter[T any] struct {
+type PostgresAdapter struct {
 	conn       PgxPool
 	tx         PgxTx
 	logger     *slog.Logger
@@ -124,9 +124,13 @@ type PostgresAdapter[T any] struct {
 	attributes []attribute.KeyValue
 }
 
+type SPostgresAdapter[T any] struct {
+	*PostgresAdapter
+}
+
 // NewPostgresAdapter creates a new PostgresAdapter
-func NewPostgresAdapter[T any](pool PgxPool, logger *slog.Logger, tracer trace.Tracer, opts ...PostgresOpt[T]) *PostgresAdapter[T] {
-	adapter := &PostgresAdapter[T]{
+func NewPostgresAdapter(pool PgxPool, logger *slog.Logger, tracer trace.Tracer, opts ...PostgresOpt) *PostgresAdapter {
+	adapter := &PostgresAdapter{
 		conn:   pool,
 		logger: logger,
 		tracer: tracer,
@@ -139,8 +143,13 @@ func NewPostgresAdapter[T any](pool PgxPool, logger *slog.Logger, tracer trace.T
 	return adapter
 }
 
+// NewSPostgresAdapter wraps an existing PostgresAdapter and provides select into struct method
+func NewSPostgresAdapter[T any](adapter *PostgresAdapter) *SPostgresAdapter[T] {
+	return &SPostgresAdapter[T]{adapter}
+}
+
 // NewTransactionAdapter creates an adapter for executing transactions
-func (a *PostgresAdapter[T]) NewTransactionAdapter(ctx context.Context) (*PostgresAdapter[T], error) {
+func (a *PostgresAdapter) NewTransactionAdapter(ctx context.Context) (*PostgresAdapter, error) {
 	if a.conn == nil {
 		a.logger.Error("nil connection in PostgresAdapter")
 		return nil, &ErrNilPgxPool{}
@@ -151,13 +160,13 @@ func (a *PostgresAdapter[T]) NewTransactionAdapter(ctx context.Context) (*Postgr
 		return nil, err
 	}
 
-	txAdapter := NewPostgresAdapter[T](tx, a.logger, a.tracer, WithPgxTx[T](tx))
+	txAdapter := NewPostgresAdapter(tx, a.logger, a.tracer, WithPgxTx(tx))
 
 	return txAdapter, nil
 }
 
 // Commit commits the transaction after first checking if the context has been canceled
-func (a *PostgresAdapter[T]) Commit(ctx context.Context) error {
+func (a *PostgresAdapter) Commit(ctx context.Context) error {
 	if a.tx == nil {
 		a.logger.Error("nil PgxTx in PostgresAdapter")
 		return &ErrNilPgxTx{}
@@ -175,7 +184,7 @@ func (a *PostgresAdapter[T]) Commit(ctx context.Context) error {
 }
 
 // Rollback initiates a transaction rollback
-func (a *PostgresAdapter[T]) Rollback(ctx context.Context) error {
+func (a *PostgresAdapter) Rollback(ctx context.Context) error {
 	if a.tx == nil {
 		a.logger.Error("nil PgxTx in PostgresAdapter")
 		return &ErrNilPgxTx{}
@@ -185,12 +194,12 @@ func (a *PostgresAdapter[T]) Rollback(ctx context.Context) error {
 }
 
 // ConnectionPool returns the underlying pgxpool
-func (a *PostgresAdapter[T]) ConnectionPool() PgxPool {
+func (a *PostgresAdapter) ConnectionPool() PgxPool {
 	return a.conn
 }
 
 // Exec executes the supplied sql statement and returns the number of rows affected
-func (a *PostgresAdapter[T]) Exec(ctx context.Context, sql string, args map[string]interface{}) (int64, error) {
+func (a *PostgresAdapter) Exec(ctx context.Context, sql string, args map[string]interface{}) (int64, error) {
 	if a.conn == nil {
 		a.logger.Error("nil connection in PostgresAdapter")
 		return 0, &ErrNilPgxPool{}
@@ -219,7 +228,7 @@ func (a *PostgresAdapter[T]) Exec(ctx context.Context, sql string, args map[stri
 }
 
 // Insert creates a new row returns the id
-func (a *PostgresAdapter[T]) Insert(ctx context.Context, sql string, args map[string]interface{}) (int, error) {
+func (a *PostgresAdapter) Insert(ctx context.Context, sql string, args map[string]interface{}) (int, error) {
 	if a.conn == nil {
 		a.logger.Error("nil connection in PostgresAdapter")
 		return 0, &ErrNilPgxPool{}
@@ -261,7 +270,7 @@ const ExInsertQuery string = `
 `
 
 // Delete deletes the supplied row
-func (a *PostgresAdapter[T]) Delete(ctx context.Context, sql string, args map[string]interface{}) error {
+func (a *PostgresAdapter) Delete(ctx context.Context, sql string, args map[string]interface{}) error {
 	if a.conn == nil {
 		a.logger.Error("nil connection in PostgresAdapter")
 		return &ErrNilPgxPool{}
@@ -303,9 +312,49 @@ const ExDeleteQuery string = `
     WHERE id = @id
 `
 
-func (a *PostgresAdapter[T]) Select(ctx context.Context, sql string, args map[string]interface{}) ([]T, error) {
+func (a *PostgresAdapter) RowExists(ctx context.Context, sql string, args map[string]interface{}) (bool, error) {
 	if a.conn == nil {
 		a.logger.Error("nil connection in PostgresAdapter")
+		return false, &ErrNilPgxPool{}
+	}
+
+	ctx, span := a.tracer.Start(ctx, "SELECT",
+		trace.WithLinks(trace.LinkFromContext(ctx)),
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("db.system.name", "postgresql"),
+			attribute.String("db.operation.name", "SELECT"),
+			attribute.String("db.query.text", sql),
+		),
+	)
+	defer span.End()
+
+	if a.attributes != nil {
+		span.SetAttributes(a.attributes...)
+	}
+
+	var id int
+	err := a.conn.QueryRow(ctx, sql, args).Scan(&id)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return false, &ErrQueryRow{err}
+	}
+
+	if id == 0 || errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+const ExRowExistsQuery string = `
+    SELECT id
+    FROM table
+    WHERE id = @id
+`
+
+func (a *SPostgresAdapter[T]) Select(ctx context.Context, sql string, args map[string]interface{}) ([]T, error) {
+	if a.conn == nil {
+		a.logger.Error("nil connection in SPostgresAdapter")
 		return nil, &ErrNilPgxPool{}
 	}
 
@@ -343,46 +392,6 @@ func (a *PostgresAdapter[T]) Select(ctx context.Context, sql string, args map[st
 
 const ExSelectQuery string = `
     SELECT *
-    FROM table
-    WHERE id = @id
-`
-
-func (a *PostgresAdapter[T]) RowExists(ctx context.Context, sql string, args map[string]interface{}) (bool, error) {
-	if a.conn == nil {
-		a.logger.Error("nil connection in PostgresAdapter")
-		return false, &ErrNilPgxPool{}
-	}
-
-	ctx, span := a.tracer.Start(ctx, "SELECT",
-		trace.WithLinks(trace.LinkFromContext(ctx)),
-		trace.WithSpanKind(trace.SpanKindClient),
-		trace.WithAttributes(
-			attribute.String("db.system.name", "postgresql"),
-			attribute.String("db.operation.name", "SELECT"),
-			attribute.String("db.query.text", sql),
-		),
-	)
-	defer span.End()
-
-	if a.attributes != nil {
-		span.SetAttributes(a.attributes...)
-	}
-
-	var id int
-	err := a.conn.QueryRow(ctx, sql, args).Scan(&id)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return false, &ErrQueryRow{err}
-	}
-
-	if id == 0 || errors.Is(err, pgx.ErrNoRows) {
-		return false, nil
-	}
-
-	return true, nil
-}
-
-const ExRowExistsQuery string = `
-    SELECT id
     FROM table
     WHERE id = @id
 `
