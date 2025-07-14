@@ -100,7 +100,7 @@ func (a *TmuxAdapter) HasSession(ctx context.Context, session string) int {
 	}
 
 	if _, err := io.Copy(os.Stdout, output); err != nil {
-		fmt.Fprintf(os.Stdout, "error copying output to Stdout: %s\n", err.Error())
+		fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxHasSessionCmd, err.Error())
 	}
 
 	return TmuxSessionExists
@@ -120,6 +120,7 @@ func (a *TmuxAdapter) NewSession(ctx context.Context, name string) error {
 	}
 
 	if _, err := io.Copy(os.Stdout, output); err != nil {
+		fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxNewSessionCmd, err.Error())
 		return err
 	}
 
@@ -139,6 +140,7 @@ func (a *TmuxAdapter) AttachSession(ctx context.Context, session string) error {
 	}
 
 	if _, err := io.Copy(os.Stdout, output); err != nil {
+		fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxAttachCmd, err.Error())
 		return err
 	}
 
@@ -160,6 +162,7 @@ func (a *TmuxAdapter) SendKeys(ctx context.Context, cmd []string, session string
 	}
 
 	if _, err := io.Copy(os.Stdout, output); err != nil {
+		fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxSendKeysCmd, err.Error())
 		return err
 	}
 
@@ -178,6 +181,7 @@ func (a *TmuxAdapter) NewWindow(ctx context.Context, session string, name string
 	}
 
 	if _, err := io.Copy(os.Stdout, output); err != nil {
+		fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxNewWindowCmd, err.Error())
 		return err
 	}
 
@@ -196,6 +200,7 @@ func (a *TmuxAdapter) SelectWindow(ctx context.Context, session string, window s
 	}
 
 	if _, err := io.Copy(os.Stdout, output); err != nil {
+		fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxSelectWindowCmd, err.Error())
 		return err
 	}
 
