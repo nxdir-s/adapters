@@ -3,13 +3,15 @@ package adapters
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"os/signal"
-	"reflect"
+	"strconv"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/mock"
 )
 
 type ErrMockExec struct{}
@@ -24,68 +26,89 @@ func (e *ErrCmdArgs) Error() string {
 	return "command arguments dont match"
 }
 
-type CmdMock struct {
-	cmd       *exec.Cmd
-	shouldErr bool
-}
+type mockCmdOpt func(m *mockCmd)
 
-func NewCmdMock(cmd *exec.Cmd, shouldErr bool) *CmdMock {
-	return &CmdMock{
-		cmd:       cmd,
-		shouldErr: shouldErr,
+func withCmdExec(returnArgs ...interface{}) mockCmdOpt {
+	return func(m *mockCmd) {
+		m.On("Exec", mock.Anything, mock.Anything).Return(returnArgs...)
 	}
 }
 
-func (a *CmdMock) Exec(ctx context.Context, cmd *exec.Cmd) (io.Reader, error) {
-	if !reflect.DeepEqual(a.cmd.Args, cmd.Args) {
-		fmt.Fprintf(os.Stdout, "CmdMock: arguments are different: %+v %+v", a.cmd.Args, cmd.Args)
-		return nil, &ErrCmdArgs{}
+type mockCmd struct {
+	mock.Mock
+}
+
+func newMockCmd(opts ...mockCmdOpt) *mockCmd {
+	cmd := &mockCmd{}
+
+	for _, opt := range opts {
+		opt(cmd)
 	}
 
-	switch a.shouldErr {
-	case true:
-		return bytes.NewReader([]byte("")), &ErrMockExec{}
-	case false:
-		return bytes.NewReader([]byte("")), nil
-	default:
-		return bytes.NewReader([]byte("")), nil
-	}
+	return cmd
+}
+
+func (m *mockCmd) Exec(ctx context.Context, cmd *exec.Cmd) (io.Reader, error) {
+	args := m.Called(ctx, cmd)
+	return args.Get(0).(io.Reader), args.Error(1)
 }
 
 const (
 	TestTmuxSession string = "TmuxUnitTests"
 	TestTmuxWindow  string = "TmuxUnitTests"
+	TestTmuxOutput  string = "test output"
+	TestTmuxCmd     string = "test-cmd"
 )
 
 func TestHasSession(t *testing.T) {
 	var cases = []struct {
-		name      string
-		expected  int
-		shouldErr bool
+		session     string
+		expectedVal int
+		expectedErr error
+		opts        []TmuxOpt
 	}{
 		{
-			name:      "should return 0 if a tmux session exists",
-			expected:  TmuxSessionExists,
-			shouldErr: false,
+			session:     TestTmuxSession,
+			expectedVal: TmuxSessionExists,
+			expectedErr: nil,
+			opts: []TmuxOpt{
+				WithCmdAdapter(newMockCmd(
+					withCmdExec(bytes.NewReader(
+						[]byte(TestTmuxOutput),
+					), nil),
+				)),
+			},
 		},
 		{
-			name:      "should return 1 if a tmux session does not exists",
-			expected:  TmuxSessionNotExists,
-			shouldErr: true,
+			session:     TestTmuxSession,
+			expectedVal: TmuxSessionNotExists,
+			expectedErr: &ErrHasSession{&ErrTest{}},
+			opts: []TmuxOpt{
+				WithCmdAdapter(newMockCmd(
+					withCmdExec(bytes.NewReader([]byte{}), &ErrTest{}),
+				)),
+			},
+		},
+		{
+			session:     TestTmuxSession,
+			expectedVal: TmuxSessionNotExists,
+			expectedErr: &ErrNilCmd{},
+			opts:        []TmuxOpt{},
 		},
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, Alias, TmuxHasSessionCmd, "-t", TestTmuxSession)
+	for i, tt := range cases {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			adapter := NewTmuxAdapter(ctx, tt.opts...)
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			adapter := NewTmuxAdapter(NewCmdMock(cmd, tc.shouldErr))
+			out, err := adapter.HasSession(ctx, tt.session)
 
-			if out := adapter.HasSession(ctx, TestTmuxSession); out != tc.expected {
-				t.Errorf("got %d, want %d", out, tc.expected)
+			assert.Equal(t, tt.expectedErr, err)
+			if err == nil {
+				assert.Equal(t, tt.expectedVal, out)
 			}
 		})
 	}
@@ -93,29 +116,72 @@ func TestHasSession(t *testing.T) {
 
 func TestNewSession(t *testing.T) {
 	var cases = []struct {
-		name      string
-		expected  error
-		shouldErr bool
+		session     string
+		expectedErr error
+		opts        []TmuxOpt
 	}{
 		{
-			name:      "should create a new tmux session",
-			expected:  nil,
-			shouldErr: false,
+			session:     TestTmuxSession,
+			expectedErr: nil,
+			opts: []TmuxOpt{
+				WithCmdAdapter(newMockCmd(
+					withCmdExec(bytes.NewReader(
+						[]byte(TestTmuxOutput),
+					), nil),
+				)),
+			},
 		},
 	}
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, Alias, TmuxNewSessionCmd, "-d", "-s", TestTmuxSession, "-n", TestTmuxWindow)
+	for i, tt := range cases {
+		t.Run(strconv.Itoa(i), func(t *testing.T) {
+			adapter := NewTmuxAdapter(ctx, tt.opts...)
 
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			adapter := NewTmuxAdapter(NewCmdMock(cmd, tc.shouldErr))
+			err := adapter.NewSession(ctx, tt.session)
 
-			if out := adapter.NewSession(ctx, TestTmuxWindow); out != tc.expected {
-				t.Errorf("got %d, want %d", out, tc.expected)
-			}
+			assert.Equal(t, tt.expectedErr, err)
 		})
+	}
+}
+
+func TestTmuxErrors(t *testing.T) {
+	var err error
+
+	err = &ErrHasSession{&ErrTest{}}
+	if len(err.Error()) == 0 {
+		t.Error(&ErrMissingMsg{"ErrHasSession"})
+	}
+
+	err = &ErrNewSession{TestTmuxSession, &ErrTest{}}
+	if len(err.Error()) == 0 {
+		t.Error(&ErrMissingMsg{"ErrNewSession"})
+	}
+
+	err = &ErrAttachSession{TestTmuxSession, &ErrTest{}}
+	if len(err.Error()) == 0 {
+		t.Error(&ErrMissingMsg{"ErrAttachSession"})
+	}
+
+	err = &ErrNewWindow{TestTmuxWindow, &ErrTest{}}
+	if len(err.Error()) == 0 {
+		t.Error(&ErrMissingMsg{"ErrNewWindow"})
+	}
+
+	err = &ErrSelectWindow{TestTmuxWindow, &ErrTest{}}
+	if len(err.Error()) == 0 {
+		t.Error(&ErrMissingMsg{"ErrSelectWindow"})
+	}
+
+	err = &ErrSendKeys{TestTmuxCmd, &ErrTest{}}
+	if len(err.Error()) == 0 {
+		t.Error(&ErrMissingMsg{"ErrSendKeys"})
+	}
+
+	err = &ErrNilCmd{}
+	if len(err.Error()) == 0 {
+		t.Error(&ErrMissingMsg{"ErrNilCmd"})
 	}
 }

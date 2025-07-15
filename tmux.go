@@ -9,6 +9,14 @@ import (
 	"strings"
 )
 
+type ErrHasSession struct {
+	err error
+}
+
+func (e *ErrHasSession) Error() string {
+	return "error checking if session exists: " + e.err.Error()
+}
+
 type ErrNewSession struct {
 	session string
 	err     error
@@ -54,6 +62,12 @@ func (e *ErrSendKeys) Error() string {
 	return "error executing " + TmuxSendKeysCmd + " with cmd '" + e.cmd + "': " + e.err.Error()
 }
 
+type ErrNilCmd struct{}
+
+func (e *ErrNilCmd) Error() string {
+	return "error nil CmdAdapter"
+}
+
 const Alias string = "tmux"
 
 const (
@@ -71,6 +85,14 @@ const (
 	TmuxSendKeysCmd     string = "send-keys"
 )
 
+type TmuxOpt func(a *TmuxAdapter)
+
+func WithCmdAdapter(cmd Command) TmuxOpt {
+	return func(a *TmuxAdapter) {
+		a.cmd = cmd
+	}
+}
+
 type Command interface {
 	Exec(context.Context, *exec.Cmd) (io.Reader, error)
 }
@@ -80,14 +102,22 @@ type TmuxAdapter struct {
 }
 
 // NewTmuxAdapter creates a tmux adapter
-func NewTmuxAdapter(adapter Command) *TmuxAdapter {
-	return &TmuxAdapter{
-		cmd: adapter,
+func NewTmuxAdapter(ctx context.Context, opts ...TmuxOpt) *TmuxAdapter {
+	adapter := &TmuxAdapter{}
+
+	for _, opt := range opts {
+		opt(adapter)
 	}
+
+	return adapter
 }
 
 // HasSession checks for an already existing tmux session
-func (a *TmuxAdapter) HasSession(ctx context.Context, session string) int {
+func (a *TmuxAdapter) HasSession(ctx context.Context, session string) (int, error) {
+	if a.cmd == nil {
+		return TmuxSessionNotExists, &ErrNilCmd{}
+	}
+
 	cmd := exec.CommandContext(ctx, Alias, TmuxHasSessionCmd, "-t", session)
 
 	fmt.Fprintf(os.Stdout, "checking for existing session '%s'\n", session)
@@ -96,18 +126,25 @@ func (a *TmuxAdapter) HasSession(ctx context.Context, session string) int {
 	if err != nil {
 		fmt.Fprintf(os.Stdout, "%s failed: %s\n", TmuxHasSessionCmd, err.Error())
 
-		return TmuxSessionNotExists
+		return TmuxSessionNotExists, &ErrHasSession{err}
 	}
 
-	if _, err := io.Copy(os.Stdout, output); err != nil {
-		fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxHasSessionCmd, err.Error())
-	}
+	go func() {
+		if _, err := io.Copy(os.Stdout, output); err != nil {
+			fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxHasSessionCmd, err.Error())
+			return
+		}
+	}()
 
-	return TmuxSessionExists
+	return TmuxSessionExists, nil
 }
 
 // NewSession creates a new tmux session
 func (a *TmuxAdapter) NewSession(ctx context.Context, name string) error {
+	if a.cmd == nil {
+		return &ErrNilCmd{}
+	}
+
 	cmd := exec.CommandContext(ctx, Alias, TmuxNewSessionCmd, "-d", "-s", name, "-n", name)
 
 	fmt.Fprintf(os.Stdout, "creating new session named '%s'\n", name)
@@ -119,16 +156,22 @@ func (a *TmuxAdapter) NewSession(ctx context.Context, name string) error {
 		return &ErrNewSession{name, err}
 	}
 
-	if _, err := io.Copy(os.Stdout, output); err != nil {
-		fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxNewSessionCmd, err.Error())
-		return err
-	}
+	go func() {
+		if _, err := io.Copy(os.Stdout, output); err != nil {
+			fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxNewSessionCmd, err.Error())
+			return
+		}
+	}()
 
 	return nil
 }
 
 // AttachSession attempts attaching to a tmux session
 func (a *TmuxAdapter) AttachSession(ctx context.Context, session string) error {
+	if a.cmd == nil {
+		return &ErrNilCmd{}
+	}
+
 	cmd := exec.CommandContext(ctx, Alias, TmuxAttachCmd, "-t", session)
 	cmd.Stdin = os.Stdin
 
@@ -139,16 +182,22 @@ func (a *TmuxAdapter) AttachSession(ctx context.Context, session string) error {
 		return &ErrAttachSession{session, err}
 	}
 
-	if _, err := io.Copy(os.Stdout, output); err != nil {
-		fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxAttachCmd, err.Error())
-		return err
-	}
+	go func() {
+		if _, err := io.Copy(os.Stdout, output); err != nil {
+			fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxAttachCmd, err.Error())
+			return
+		}
+	}()
 
 	return nil
 }
 
 // SendKeys executes the supplied command
 func (a *TmuxAdapter) SendKeys(ctx context.Context, cmd []string, session string, window string) error {
+	if a.cmd == nil {
+		return &ErrNilCmd{}
+	}
+
 	cmdArgs := []string{TmuxSendKeysCmd, "-t", session + ":" + window}
 	cmdArgs = append(cmdArgs, cmd...)
 
@@ -161,16 +210,22 @@ func (a *TmuxAdapter) SendKeys(ctx context.Context, cmd []string, session string
 		return &ErrSendKeys{strings.Join(cmdArgs, " "), err}
 	}
 
-	if _, err := io.Copy(os.Stdout, output); err != nil {
-		fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxSendKeysCmd, err.Error())
-		return err
-	}
+	go func() {
+		if _, err := io.Copy(os.Stdout, output); err != nil {
+			fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxSendKeysCmd, err.Error())
+			return
+		}
+	}()
 
 	return nil
 }
 
 // NewWindow creates a new tmux window
 func (a *TmuxAdapter) NewWindow(ctx context.Context, session string, name string) error {
+	if a.cmd == nil {
+		return &ErrNilCmd{}
+	}
+
 	cmd := exec.CommandContext(ctx, Alias, TmuxNewWindowCmd, "-t", session, "-n", name)
 
 	output, err := a.cmd.Exec(ctx, cmd)
@@ -180,16 +235,22 @@ func (a *TmuxAdapter) NewWindow(ctx context.Context, session string, name string
 		return &ErrNewWindow{name, err}
 	}
 
-	if _, err := io.Copy(os.Stdout, output); err != nil {
-		fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxNewWindowCmd, err.Error())
-		return err
-	}
+	go func() {
+		if _, err := io.Copy(os.Stdout, output); err != nil {
+			fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxNewWindowCmd, err.Error())
+			return
+		}
+	}()
 
 	return nil
 }
 
 // SelectWindow selects a tmux window
 func (a *TmuxAdapter) SelectWindow(ctx context.Context, session string, window string) error {
+	if a.cmd == nil {
+		return &ErrNilCmd{}
+	}
+
 	cmd := exec.CommandContext(ctx, Alias, TmuxSelectWindowCmd, "-t", session+":"+window)
 
 	output, err := a.cmd.Exec(ctx, cmd)
@@ -199,10 +260,12 @@ func (a *TmuxAdapter) SelectWindow(ctx context.Context, session string, window s
 		return &ErrSelectWindow{window, err}
 	}
 
-	if _, err := io.Copy(os.Stdout, output); err != nil {
-		fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxSelectWindowCmd, err.Error())
-		return err
-	}
+	go func() {
+		if _, err := io.Copy(os.Stdout, output); err != nil {
+			fmt.Fprintf(os.Stdout, "error copying '%s' output to Stdout: %s\n", TmuxSelectWindowCmd, err.Error())
+			return
+		}
+	}()
 
 	return nil
 }
