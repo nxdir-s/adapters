@@ -42,16 +42,20 @@ func (e *ErrListTopics) Error() string {
 
 type KafkaOpt func(a *KafkaAdapter) error
 
-func WithConsumer(topic string, groupname string, brokers []string) KafkaOpt {
+func WithConsumer(topic string, groupname string, brokers []string, opts ...kgo.Opt) KafkaOpt {
 	return func(a *KafkaAdapter) error {
-		client, err := kgo.NewClient(
+		options := []kgo.Opt{
 			kgo.SeedBrokers(brokers...),
 			kgo.ConsumerGroup(groupname),
 			kgo.ConsumeTopics(topic),
 			kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 			kgo.DisableAutoCommit(),
 			kgo.BlockRebalanceOnPoll(),
-		)
+		}
+
+		options = append(options, opts...)
+
+		client, err := kgo.NewClient(options...)
 		if err != nil {
 			return err
 		}
@@ -64,11 +68,15 @@ func WithConsumer(topic string, groupname string, brokers []string) KafkaOpt {
 	}
 }
 
-func WithProducer(topic string, brokers []string) KafkaOpt {
+func WithProducer(topic string, brokers []string, opts ...kgo.Opt) KafkaOpt {
 	return func(a *KafkaAdapter) error {
-		client, err := kgo.NewClient(
+		options := []kgo.Opt{
 			kgo.SeedBrokers(brokers...),
-		)
+		}
+
+		options = append(options, opts...)
+
+		client, err := kgo.NewClient(options...)
 		if err != nil {
 			return err
 		}
