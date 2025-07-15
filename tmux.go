@@ -85,16 +85,16 @@ const (
 	TmuxSendKeysCmd     string = "send-keys"
 )
 
+type Command interface {
+	Exec(context.Context, *exec.Cmd) (io.Reader, error)
+}
+
 type TmuxOpt func(a *TmuxAdapter)
 
 func WithCmdAdapter(cmd Command) TmuxOpt {
 	return func(a *TmuxAdapter) {
 		a.cmd = cmd
 	}
-}
-
-type Command interface {
-	Exec(context.Context, *exec.Cmd) (io.Reader, error)
 }
 
 type TmuxAdapter struct {

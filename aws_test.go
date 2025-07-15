@@ -597,10 +597,6 @@ func (e *ErrMissingMsg) Error() string {
 	return "missing error message for " + e.errType
 }
 
-func genErr[T any]() *T {
-	return new(T)
-}
-
 func TestAWSErrors(t *testing.T) {
 	var err error
 
