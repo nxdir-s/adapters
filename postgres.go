@@ -15,12 +15,28 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-type ErrConnect struct {
+type ErrPgxConn struct {
 	err error
 }
 
-func (e *ErrConnect) Error() string {
+func (e *ErrPgxConn) Error() string {
 	return "error creating connection pool: " + e.err.Error()
+}
+
+type ErrPgInsert struct {
+	err error
+}
+
+func (e *ErrPgInsert) Error() string {
+	return "failed to insert row: " + e.err.Error()
+}
+
+type ErrPgDelete struct {
+	err error
+}
+
+func (e *ErrPgDelete) Error() string {
+	return "failed to delete row: " + e.err.Error()
 }
 
 type ErrQueryRow struct {
@@ -31,6 +47,14 @@ func (e *ErrQueryRow) Error() string {
 	return "error querying row: " + e.err.Error()
 }
 
+type ErrRowExists struct {
+	err error
+}
+
+func (e *ErrRowExists) Error() string {
+	return "failed to check if row exists: " + e.err.Error()
+}
+
 type ErrExecQuery struct {
 	err error
 }
@@ -39,11 +63,9 @@ func (e *ErrExecQuery) Error() string {
 	return "error executing query: " + e.err.Error()
 }
 
-type ErrNotFound struct {
-	name string
-}
+type ErrNoRows struct{}
 
-func (e *ErrNotFound) Error() string {
+func (e *ErrNoRows) Error() string {
 	return "error no rows affected"
 }
 
@@ -90,7 +112,7 @@ type PgxPool interface {
 func NewPgxPool(ctx context.Context, connUrl string) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.New(ctx, connUrl)
 	if err != nil {
-		return nil, &ErrConnect{err}
+		return nil, &ErrPgxConn{err}
 	}
 
 	return pool, nil
@@ -101,18 +123,28 @@ type PgxTx interface {
 	Rollback(ctx context.Context) error
 }
 
-type PostgresOpt func(a *PostgresAdapter)
+type PostgresOpt func(a *PostgresAdapter) error
 
 // WithPgxTx sets the transaction adapter
 func WithPgxTx(tx PgxTx) PostgresOpt {
-	return func(a *PostgresAdapter) {
+	return func(a *PostgresAdapter) error {
 		a.tx = tx
+		return nil
 	}
 }
 
-func WithPostgresSpanAttrs(attrs ...attribute.KeyValue) PostgresOpt {
-	return func(a *PostgresAdapter) {
+// WithPgxPool sets the adapter's connection
+func WithPgxPool(pool PgxPool) PostgresOpt {
+	return func(a *PostgresAdapter) error {
+		a.conn = pool
+		return nil
+	}
+}
+
+func WithPgSpanAttrs(attrs ...attribute.KeyValue) PostgresOpt {
+	return func(a *PostgresAdapter) error {
 		a.attributes = append(a.attributes, attrs...)
+		return nil
 	}
 }
 
@@ -129,9 +161,8 @@ type SPostgresAdapter[T any] struct {
 }
 
 // NewPostgresAdapter creates a new PostgresAdapter
-func NewPostgresAdapter(pool PgxPool, logger *slog.Logger, tracer trace.Tracer, opts ...PostgresOpt) *PostgresAdapter {
+func NewPostgresAdapter(ctx context.Context, logger *slog.Logger, tracer trace.Tracer, opts ...PostgresOpt) *PostgresAdapter {
 	adapter := &PostgresAdapter{
-		conn:   pool,
 		logger: logger,
 		tracer: tracer,
 	}
@@ -160,7 +191,10 @@ func (a *PostgresAdapter) NewTransactionAdapter(ctx context.Context) (*PostgresA
 		return nil, err
 	}
 
-	txAdapter := NewPostgresAdapter(tx, a.logger, a.tracer, WithPgxTx(tx))
+	txAdapter := NewPostgresAdapter(ctx, a.logger, a.tracer,
+		WithPgxPool(tx),
+		WithPgxTx(tx),
+	)
 
 	return txAdapter, nil
 }
@@ -255,7 +289,7 @@ func (a *PostgresAdapter) Insert(ctx context.Context, sql string, args map[strin
 
 	var id int
 	if err := a.conn.QueryRow(ctx, sql, args).Scan(&id); err != nil {
-		return 0, &ErrExecQuery{err}
+		return 0, &ErrPgInsert{err}
 	}
 
 	return id, nil
@@ -297,11 +331,11 @@ func (a *PostgresAdapter) Delete(ctx context.Context, sql string, args map[strin
 
 	resp, err := a.conn.Exec(ctx, sql, args)
 	if err != nil {
-		return &ErrExecQuery{err}
+		return &ErrPgDelete{err}
 	}
 
 	if resp.RowsAffected() == 0 {
-		return &ErrNotFound{}
+		return &ErrNoRows{}
 	}
 
 	return nil
@@ -316,6 +350,10 @@ func (a *PostgresAdapter) RowExists(ctx context.Context, sql string, args map[st
 	if a.conn == nil {
 		a.logger.Error("nil connection in PostgresAdapter")
 		return false, &ErrNilPgxPool{}
+	}
+
+	if !validStatement(SelectKeyword, sql) {
+		return false, &ErrInvalidStmt{}
 	}
 
 	ctx, span := a.tracer.Start(ctx, "SELECT",
@@ -336,7 +374,7 @@ func (a *PostgresAdapter) RowExists(ctx context.Context, sql string, args map[st
 	var id int
 	err := a.conn.QueryRow(ctx, sql, args).Scan(&id)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return false, &ErrQueryRow{err}
+		return false, &ErrRowExists{err}
 	}
 
 	if id == 0 || errors.Is(err, pgx.ErrNoRows) {
